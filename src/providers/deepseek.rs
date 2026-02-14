@@ -15,10 +15,11 @@ pub struct DeepSeekProvider {
 impl DeepSeekProvider {
     const BASE_URL: &'static str = "https://api.deepseek.com";
 
-    pub fn new() -> Result<Self, CrabError> {
+    /// Creates a new provider instance with a custom environment variable name.
+    pub fn new_with_env(env_var: &str) -> Result<Self, CrabError> {
         Ok(Self {
             client: Client::new(),
-            api_key: std::env::var("DEEPSEEK_API_KEY").ok(),
+            api_key: std::env::var(env_var).ok(),
         })
     }
 

@@ -1,6 +1,8 @@
 use std::fmt;
 use std::str::FromStr;
 
+/// Enumeration of all supported LLM providers.
+/// Used for compile-time validation and case-insensitive string parsing.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ProviderName {
     OpenAI,
@@ -14,6 +16,8 @@ pub enum ProviderName {
 }
 
 impl ProviderName {
+    /// Complete list of all supported providers.
+    /// Used for iteration in --list-providers and --list-models -a.
     pub const ALL: &'static [ProviderName] = &[
         ProviderName::OpenAI,
         ProviderName::Anthropic,
@@ -25,6 +29,7 @@ impl ProviderName {
         ProviderName::DeepSeek,
     ];
 
+    /// Returns the lowercase string identifier for this provider.
     pub fn as_str(&self) -> &'static str {
         match self {
             ProviderName::OpenAI => "openai",

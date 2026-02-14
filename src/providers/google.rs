@@ -16,10 +16,11 @@ pub struct GoogleProvider {
 impl GoogleProvider {
     const BASE_URL: &'static str = "https://generativelanguage.googleapis.com/v1beta";
 
-    pub fn new() -> Result<Self, CrabError> {
+    /// Creates a new provider instance with a custom environment variable name.
+    pub fn new_with_env(env_var: &str) -> Result<Self, CrabError> {
         Ok(Self {
             client: Client::new(),
-            api_key: std::env::var("GOOGLE_API_KEY").ok(),
+            api_key: std::env::var(env_var).ok(),
         })
     }
 
@@ -31,7 +32,8 @@ impl GoogleProvider {
 
     fn static_models() -> Vec<String> {
         vec![
-            "gemini-2.0-flash".to_string(),
+            "gemini-2.0-flash-exp".to_string(),
+            "gemini-2.0-flash-thinking-exp-01-21".to_string(),
             "gemini-1.5-pro".to_string(),
             "gemini-1.5-flash".to_string(),
         ]

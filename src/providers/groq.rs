@@ -14,10 +14,11 @@ pub struct GroqProvider {
 impl GroqProvider {
     const BASE_URL: &'static str = "https://api.groq.com/openai/v1";
 
-    pub fn new() -> Result<Self, CrabError> {
+    /// Creates a new provider instance with a custom environment variable name.
+    pub fn new_with_env(env_var: &str) -> Result<Self, CrabError> {
         Ok(Self {
             client: Client::new(),
-            api_key: std::env::var("GROQ_API_KEY").ok(),
+            api_key: std::env::var(env_var).ok(),
         })
     }
 
@@ -25,6 +26,15 @@ impl GroqProvider {
         self.api_key
             .as_deref()
             .ok_or_else(|| CrabError::MissingApiKey("groq".to_string()))
+    }
+
+    fn static_models() -> Vec<String> {
+        vec![
+            "llama-3.3-70b-versatile".to_string(),
+            "llama-3.1-70b-versatile".to_string(),
+            "mixtral-8x7b-32768".to_string(),
+            "gemma2-9b-it".to_string(),
+        ]
     }
 }
 
@@ -50,7 +60,14 @@ impl Provider for GroqProvider {
     }
 
     async fn list_models(&self) -> Result<Vec<String>, CrabError> {
-        openai_compat::list_models_api(&self.client, Self::BASE_URL, self.require_key()?).await
+        let api_key = match self.require_key() {
+            Ok(k) => k,
+            Err(_) => return Ok(Self::static_models()),
+        };
+        match openai_compat::list_models_api(&self.client, Self::BASE_URL, api_key).await {
+            Ok(models) => Ok(models),
+            Err(_) => Ok(Self::static_models()),
+        }
     }
 
     fn name(&self) -> &str {

@@ -71,10 +71,52 @@ Default config path:
 ~/.config/crabai/config.toml
 ```
 
-Override with the `-c` flag:
+### Interactive Configuration
+
+CrabAI provides an interactive configuration tool to create or edit your config file.
+
+**Manual invocation:**
 
 ```
-crabai -c ./my-config.toml summarize
+crabai --config
+```
+
+or
+
+```
+crabai -c
+```
+
+**Automatic prompt:**
+
+When you run CrabAI without a configured provider, it will automatically offer to create a configuration file:
+
+```
+$ crabai summarize
+No provider configured.
+Would you like to create a configuration file now? (y/n)
+```
+
+The interactive tool will guide you through:
+- Selecting a default provider
+- Choosing a default model (fetched from the provider's API)
+- Setting temperature and max tokens
+- Configuring the prompts directory
+- Setting model cache options
+- Customizing API key environment variable names (advanced)
+
+### Using a Custom Config File
+
+Specify a custom config file path with the `--use-config` flag:
+
+```
+crabai --use-config ./my-config.toml summarize
+```
+
+or
+
+```
+crabai -u ./my-config.toml summarize
 ```
 
 If the config file does not exist, CrabAI uses internal defaults and proceeds without error.
@@ -83,13 +125,27 @@ If the config file does not exist, CrabAI uses internal defaults and proceeds wi
 
 ```toml
 default_provider = "openai"
-default_model = "gpt-4.1"
+default_model = "gpt-4o"
 temperature = 0.2
 max_tokens = 4096
 prompts_dir = "~/.config/crabai/prompts"
 model_cache = true
 model_cache_ttl_hours = 24
+
+# Advanced configuration is always generated with defaults
+# Edit these values to customize API key environment variable names
+[advanced.api_key_vars]
+openai = "OPENAI_API_KEY"
+anthropic = "ANTHROPIC_API_KEY"
+google = "GOOGLE_API_KEY"
+openrouter = "OPENROUTER_API_KEY"
+groq = "GROQ_API_KEY"
+together = "TOGETHER_API_KEY"
+mistral = "MISTRAL_API_KEY"
+deepseek = "DEEPSEEK_API_KEY"
 ```
+
+**Note:** The `[advanced.api_key_vars]` section is automatically created with default values for all providers. You can manually edit this file to customize environment variable names without re-running the configuration wizard.
 
 ### Config Keys
 
@@ -102,8 +158,44 @@ model_cache_ttl_hours = 24
 | `prompts_dir` | string | `~/.config/crabai/prompts` | Directory containing prompt templates |
 | `model_cache` | boolean | `true` | Enable or disable model list caching |
 | `model_cache_ttl_hours` | integer | `24` | Hours before cached model lists expire |
+| `advanced.api_key_vars` | table | (see below) | Custom environment variable names for API keys |
 
 The `prompts_dir` value supports `~/` expansion.
+
+### Advanced Configuration
+
+The `[advanced]` section is automatically generated with default values for all providers. This allows customization of provider-specific settings.
+
+#### Custom API Key Environment Variables
+
+The configuration file always includes an `[advanced.api_key_vars]` section with default environment variable names for all providers:
+
+```toml
+[advanced.api_key_vars]
+openai = "OPENAI_API_KEY"
+anthropic = "ANTHROPIC_API_KEY"
+google = "GOOGLE_API_KEY"
+# ... all 8 providers included by default
+```
+
+You can customize these values either:
+1. **During setup**: Answer "yes" when prompted "Configure advanced settings?"
+2. **Manual editing**: Edit the config file directly after creation
+
+**Example customization:**
+```toml
+[advanced.api_key_vars]
+openai = "MY_CUSTOM_OPENAI_KEY"
+anthropic = "MY_ANTHROPIC_KEY"
+```
+
+This is useful when:
+- Your environment uses non-standard variable names
+- You're using multiple API keys for the same provider
+- You want consistent naming across different tools
+- Provider conventions change over time
+
+**Important:** The program always reads these mappings when looking up API keys, so you can change environment variable names without modifying code.
 
 ### Resolution Precedence
 
@@ -142,11 +234,12 @@ crabai [OPTIONS] [PROMPT_NAME]
 | `--provider` | `-p` | Override provider |
 | `--model` | `-m` | Override model |
 | `--temperature` | `-t` | Set sampling temperature |
-| `--max-tokens` | | Set max tokens |
-| `--config` | `-c` | Custom config file path |
-| `--list-providers` | | List all supported providers |
-| `--list-prompts` | | List available prompt templates |
-| `--list-models` | | List models for a provider |
+| `--max-tokens` | `-T` | Set max tokens |
+| `--use-config` | `-u` | Path to custom config file |
+| `--config` | `-c` | Interactive config creation/editing |
+| `--list-providers` | `-P` | List all supported providers |
+| `--prompt-list` | `-L` | List available prompt templates |
+| `--list-models` | `-M` | List models for a provider |
 | `--all` | `-a` | With `--list-models`, query all providers |
 | `--verbose` | `-v` | Print request metadata to STDERR |
 | `--help` | `-h` | Print help |
@@ -208,7 +301,7 @@ google:gemini-2.5-pro
 List available prompts:
 
 ```
-crabai --list-prompts
+crabai --prompt-list
 ```
 
 Verbose mode prints metadata to STDERR:
@@ -224,6 +317,18 @@ Temperature: 0.2
 Max tokens: 4096
 ```
 
+Use a custom config file:
+
+```
+crabai -u ./project-config.toml summarize -p anthropic
+```
+
+Create or edit configuration interactively:
+
+```
+crabai --config
+```
+
 
 ## Prompt System
 
@@ -234,6 +339,19 @@ Prompts are Markdown files stored in the prompts directory. The default location
 ```
 
 This is configurable via the `prompts_dir` key in `config.toml`.
+
+### Bundled Prompts
+
+CrabAI ships with sample prompts embedded in the binary:
+- `blog.md` - Blog post writing assistant
+- `clean.md` - Code cleaning and refactoring
+- `ideas.md` - Idea generation and brainstorming
+- `pragmatica.md` - Pragmatic code review
+- `weaver.md` - Content weaving and synthesis
+
+These prompts are **automatically installed** to your prompts directory on first run. If you delete a bundled prompt, it will be reinstalled the next time you run CrabAI. This ensures you always have working examples to start with.
+
+**Adding new bundled prompts**: Any `.md` file you add to `src/prompts/` will be automatically embedded in the binary at compile time and deployed with CrabAI. No code changes needed - just add your prompt file and rebuild!
 
 ### Prompt File Format
 
@@ -270,11 +388,27 @@ STDIN detection uses the `atty` crate to check whether standard input is a termi
 
 ## Model Discovery
 
-CrabAI supports three model listing mechanisms depending on the provider:
+CrabAI fetches model lists dynamically from provider APIs whenever possible. All providers support dynamic model discovery:
 
-- **API listing**: Queries the provider's models endpoint (OpenAI, Google, OpenRouter, Groq, Together, Mistral, DeepSeek)
-- **Static fallback**: Returns a built-in list when no API key is available or the API call fails (Anthropic, Google, DeepSeek)
-- **API with fallback**: Attempts the API first, falls back to a static list on failure (Google, DeepSeek)
+- **Primary method**: Queries the provider's models API endpoint
+- **Fallback**: Uses built-in static list only when API call fails or no API key is available
+
+This ensures you always have access to the latest models without needing to update CrabAI.
+
+### Provider Model Discovery
+
+| Provider | API Endpoint | Fallback | Notes |
+|----------|--------------|----------|-------|
+| OpenAI | ✅ | ✅ | Returns gpt-4o, gpt-4-turbo, etc. |
+| Anthropic | ✅ | ✅ | Returns Claude 4 & 3.5 models |
+| Google | ✅ | ✅ | Returns Gemini 2.0 & 1.5 models |
+| OpenRouter | ✅ | ✅ | Returns popular models across providers |
+| Groq | ✅ | ✅ | Returns Llama 3.x & Mixtral models |
+| Together | ✅ | ✅ | Returns Llama 3.x & open models |
+| Mistral | ✅ | ✅ | Returns Mistral Large/Medium/Small |
+| DeepSeek | ✅ | ✅ | Returns deepseek-chat & reasoner |
+
+**All providers** now support graceful fallback! If the API is unavailable or no API key is configured, CrabAI returns a curated static list of popular models for that provider.
 
 ### Model Cache
 

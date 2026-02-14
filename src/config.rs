@@ -1,12 +1,13 @@
 use std::path::PathBuf;
+use std::collections::HashMap;
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use crate::error::CrabError;
 
-/// Deserialized from ~/.config/crabai/config.toml. All fields are optional;
-/// missing values fall through to internal defaults.
-#[derive(Debug, Deserialize, Default)]
+/// Configuration loaded from ~/.config/crabai/config.toml.
+/// All fields are optional; missing values fall through to internal defaults.
+#[derive(Debug, Deserialize, Serialize, Default)]
 pub struct Config {
     pub default_provider: Option<String>,
     pub default_model: Option<String>,
@@ -15,11 +16,31 @@ pub struct Config {
     pub prompts_dir: Option<String>,
     pub model_cache: Option<bool>,
     pub model_cache_ttl_hours: Option<u64>,
+    
+    /// Advanced configuration for provider-specific settings.
+    pub advanced: Option<AdvancedConfig>,
+}
+
+/// Advanced configuration section for provider-specific overrides.
+/// This section is optional and allows fine-grained control over provider behavior.
+#[derive(Debug, Deserialize, Serialize, Default, Clone)]
+pub struct AdvancedConfig {
+    /// Custom environment variable names for provider API keys.
+    /// Maps provider name (lowercase) to the environment variable name to read.
+    /// 
+    /// Example: { "anthropic": "MY_ANTHROPIC_KEY", "openai": "OPENAI_TOKEN" }
+    /// 
+    /// If a provider is not listed here, the default environment variable name
+    /// for that provider is used (e.g., "OPENAI_API_KEY" for OpenAI).
+    pub api_key_vars: Option<HashMap<String, String>>,
 }
 
 impl Config {
-    /// Load config from an explicit path or the default location.
-    /// Returns default Config if the file does not exist.
+    /// Load configuration from a TOML file.
+    /// 
+    /// If `path` is Some, loads from that path. Otherwise, loads from the
+    /// default location (~/.config/crabai/config.toml). If the file does
+    /// not exist, returns a Config with all default values.
     pub fn load(path: Option<&str>) -> Result<Self, CrabError> {
         let config_path = match path {
             Some(p) => PathBuf::from(p),
@@ -35,9 +56,14 @@ impl Config {
         Ok(config)
     }
 
-    /// Platform-appropriate config directory (e.g. ~/.config/crabai on Linux).
-    /// Falls back to a literal "~/.config" path if the platform has no
-    /// standard config directory; tilde is not expanded in that case.
+    /// Returns the platform-specific config directory for CrabAI.
+    /// 
+    /// On Linux: ~/.config/crabai
+    /// On macOS: ~/Library/Application Support/crabai
+    /// On Windows: %APPDATA%\crabai
+    /// 
+    /// Falls back to ~/.config/crabai if the platform config directory
+    /// cannot be determined.
     pub fn config_dir() -> PathBuf {
         dirs::config_dir()
             .unwrap_or_else(|| PathBuf::from("~/.config"))
@@ -48,7 +74,9 @@ impl Config {
         Self::config_dir().join("config.toml")
     }
 
-    /// Resolve prompts directory. Supports ~/  expansion in config values.
+    /// Returns the directory containing prompt template files.
+    /// Expands tilde (~/) in the configured path if present.
+    /// Defaults to ~/.config/crabai/prompts if not configured.
     pub fn prompts_dir(&self) -> PathBuf {
         match &self.prompts_dir {
             Some(dir) => {
@@ -74,10 +102,54 @@ impl Config {
     pub fn resolve_max_tokens(&self) -> u32 {
         self.max_tokens.unwrap_or(4096)
     }
+
+    /// Returns the environment variable name to use for a provider's API key.
+    /// 
+    /// Checks advanced.api_key_vars first. If not found there, returns the
+    /// default environment variable name for the provider (e.g., "OPENAI_API_KEY").
+    pub fn api_key_var(&self, provider: &str) -> String {
+        if let Some(advanced) = &self.advanced {
+            if let Some(vars) = &advanced.api_key_vars {
+                if let Some(var_name) = vars.get(provider) {
+                    return var_name.clone();
+                }
+            }
+        }
+        Self::default_api_key_var(provider)
+    }
+
+    /// Returns the standard default environment variable name for a provider.
+    /// This is the built-in convention used when no custom mapping is configured.
+    pub fn default_api_key_var(provider: &str) -> String {
+        match provider {
+            "openai" => "OPENAI_API_KEY",
+            "anthropic" => "ANTHROPIC_API_KEY",
+            "google" => "GOOGLE_API_KEY",
+            "openrouter" => "OPENROUTER_API_KEY",
+            "groq" => "GROQ_API_KEY",
+            "together" => "TOGETHER_API_KEY",
+            "mistral" => "MISTRAL_API_KEY",
+            "deepseek" => "DEEPSEEK_API_KEY",
+            _ => return format!("{}_API_KEY", provider.to_uppercase()),
+        }
+        .to_string()
+    }
+
+    /// Serializes and writes the config to a TOML file.
+    /// Creates parent directories if they don't exist.
+    pub fn save(&self, path: &PathBuf) -> Result<(), CrabError> {
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        let contents = toml::to_string_pretty(self)?;
+        std::fs::write(path, contents)?;
+        Ok(())
+    }
 }
 
-/// Minimal tilde expansion. Only handles the "~/" prefix; does not
-/// support ~user syntax or environment variable interpolation.
+/// Expands tilde (~/) at the start of a path to the user's home directory.
+/// Does not support ~username syntax or $VAR interpolation.
+/// Returns the path unchanged if tilde expansion is not applicable.
 fn shellexpand(path: &str) -> String {
     if let Some(rest) = path.strip_prefix("~/") {
         if let Some(home) = dirs::home_dir() {

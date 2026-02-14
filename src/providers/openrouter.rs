@@ -14,10 +14,11 @@ pub struct OpenRouterProvider {
 impl OpenRouterProvider {
     const BASE_URL: &'static str = "https://openrouter.ai/api/v1";
 
-    pub fn new() -> Result<Self, CrabError> {
+    /// Creates a new provider instance with a custom environment variable name.
+    pub fn new_with_env(env_var: &str) -> Result<Self, CrabError> {
         Ok(Self {
             client: Client::new(),
-            api_key: std::env::var("OPENROUTER_API_KEY").ok(),
+            api_key: std::env::var(env_var).ok(),
         })
     }
 
@@ -25,6 +26,15 @@ impl OpenRouterProvider {
         self.api_key
             .as_deref()
             .ok_or_else(|| CrabError::MissingApiKey("openrouter".to_string()))
+    }
+
+    fn static_models() -> Vec<String> {
+        vec![
+            "anthropic/claude-sonnet-4-20250514".to_string(),
+            "openai/gpt-4o".to_string(),
+            "google/gemini-2.0-flash-exp".to_string(),
+            "meta-llama/llama-3.3-70b-instruct".to_string(),
+        ]
     }
 }
 
@@ -50,7 +60,14 @@ impl Provider for OpenRouterProvider {
     }
 
     async fn list_models(&self) -> Result<Vec<String>, CrabError> {
-        openai_compat::list_models_api(&self.client, Self::BASE_URL, self.require_key()?).await
+        let api_key = match self.require_key() {
+            Ok(k) => k,
+            Err(_) => return Ok(Self::static_models()),
+        };
+        match openai_compat::list_models_api(&self.client, Self::BASE_URL, api_key).await {
+            Ok(models) => Ok(models),
+            Err(_) => Ok(Self::static_models()),
+        }
     }
 
     fn name(&self) -> &str {

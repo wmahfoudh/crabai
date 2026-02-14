@@ -16,8 +16,9 @@ impl AnthropicProvider {
     const API_URL: &'static str = "https://api.anthropic.com/v1/messages";
     const API_VERSION: &'static str = "2023-06-01";
 
-    pub fn new() -> Result<Self, CrabError> {
-        let api_key = std::env::var("ANTHROPIC_API_KEY").ok();
+    /// Creates a new provider instance with a custom environment variable name.
+    pub fn new_with_env(env_var: &str) -> Result<Self, CrabError> {
+        let api_key = std::env::var(env_var).ok();
         Ok(Self {
             client: Client::new(),
             api_key,
@@ -32,11 +33,48 @@ impl AnthropicProvider {
 
     fn static_models() -> Vec<String> {
         vec![
-            "claude-sonnet-4-5-20250514".to_string(),
-            "claude-3-5-haiku-20241022".to_string(),
+            "claude-sonnet-4-20250514".to_string(),
+            "claude-opus-4-20250514".to_string(),
             "claude-3-5-sonnet-20241022".to_string(),
+            "claude-3-5-haiku-20241022".to_string(),
             "claude-3-opus-20240229".to_string(),
         ]
+    }
+
+    /// Fetch models from Anthropic's models API endpoint.
+    async fn list_models_api(&self) -> Result<Vec<String>, CrabError> {
+        let api_key = self.require_key()?;
+        let url = "https://api.anthropic.com/v1/models";
+
+        let resp = self
+            .client
+            .get(url)
+            .header("x-api-key", api_key)
+            .header("anthropic-version", Self::API_VERSION)
+            .send()
+            .await?;
+
+        if !resp.status().is_success() {
+            return Err(CrabError::ProviderError {
+                provider: "anthropic".to_string(),
+                message: format!("HTTP {}", resp.status()),
+            });
+        }
+
+        #[derive(Deserialize)]
+        struct ModelsResponse {
+            data: Vec<ModelEntry>,
+        }
+
+        #[derive(Deserialize)]
+        struct ModelEntry {
+            id: String,
+        }
+
+        let response: ModelsResponse = resp.json().await?;
+        let models: Vec<String> = response.data.into_iter().map(|m| m.id).collect();
+        
+        Ok(models)
     }
 }
 
@@ -118,7 +156,11 @@ impl Provider for AnthropicProvider {
     }
 
     async fn list_models(&self) -> Result<Vec<String>, CrabError> {
-        Ok(Self::static_models())
+        // Try to fetch from API first, fall back to static list on failure
+        match self.list_models_api().await {
+            Ok(models) => Ok(models),
+            Err(_) => Ok(Self::static_models()),
+        }
     }
 
     fn name(&self) -> &str {
