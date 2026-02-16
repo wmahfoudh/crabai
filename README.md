@@ -23,7 +23,7 @@ CrabAI is inspired by Fabric's core idea but takes a minimalist approach. It's d
 - Not a chat UI
 - Not a stateful assistant
 
-CrabAI is a tool for quick, composable AI tasks in your terminal.
+CrabAI is terminal tool for quick, composable AI tasks.
 
 
 ## Features
