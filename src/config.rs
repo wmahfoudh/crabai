@@ -1,5 +1,5 @@
-use std::path::PathBuf;
 use std::collections::HashMap;
+use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
@@ -16,7 +16,7 @@ pub struct Config {
     pub prompts_dir: Option<String>,
     pub model_cache: Option<bool>,
     pub model_cache_ttl_hours: Option<u64>,
-    
+
     /// Advanced configuration for provider-specific settings.
     pub advanced: Option<AdvancedConfig>,
 }
@@ -27,9 +27,9 @@ pub struct Config {
 pub struct AdvancedConfig {
     /// Custom environment variable names for provider API keys.
     /// Maps provider name (lowercase) to the environment variable name to read.
-    /// 
+    ///
     /// Example: { "anthropic": "MY_ANTHROPIC_KEY", "openai": "OPENAI_TOKEN" }
-    /// 
+    ///
     /// If a provider is not listed here, the default environment variable name
     /// for that provider is used (e.g., "OPENAI_API_KEY" for OpenAI).
     pub api_key_vars: Option<HashMap<String, String>>,
@@ -37,7 +37,7 @@ pub struct AdvancedConfig {
 
 impl Config {
     /// Load configuration from a TOML file.
-    /// 
+    ///
     /// If `path` is Some, loads from that path. Otherwise, loads from the
     /// default location (~/.config/crabai/config.toml). If the file does
     /// not exist, returns a Config with all default values.
@@ -57,11 +57,11 @@ impl Config {
     }
 
     /// Returns the platform-specific config directory for CrabAI.
-    /// 
+    ///
     /// On Linux: ~/.config/crabai
     /// On macOS: ~/Library/Application Support/crabai
     /// On Windows: %APPDATA%\crabai
-    /// 
+    ///
     /// Falls back to ~/.config/crabai if the platform config directory
     /// cannot be determined.
     pub fn config_dir() -> PathBuf {
@@ -104,7 +104,7 @@ impl Config {
     }
 
     /// Returns the environment variable name to use for a provider's API key.
-    /// 
+    ///
     /// Checks advanced.api_key_vars first. If not found there, returns the
     /// default environment variable name for the provider (e.g., "OPENAI_API_KEY").
     pub fn api_key_var(&self, provider: &str) -> String {
@@ -124,7 +124,7 @@ impl Config {
         match provider {
             "openai" => "OPENAI_API_KEY",
             "anthropic" => "ANTHROPIC_API_KEY",
-            "google" => "GOOGLE_API_KEY",
+            "google" => "GEMINI_API_KEY",
             "openrouter" => "OPENROUTER_API_KEY",
             "groq" => "GROQ_API_KEY",
             "together" => "TOGETHER_API_KEY",

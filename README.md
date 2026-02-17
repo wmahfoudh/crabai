@@ -39,21 +39,18 @@ CrabAI is terminal tool for quick, composable AI tasks.
 
 ## Supported Providers
 
-| Provider | Authentication |
+| Provider | Environment Variable |
 |------------|--------------------------|
 | OpenAI | `OPENAI_API_KEY` |
 | Anthropic | `ANTHROPIC_API_KEY` |
-| Google | See note below |
+| Google | `GEMINI_API_KEY` |
 | OpenRouter | `OPENROUTER_API_KEY` |
 | Groq | `GROQ_API_KEY` |
 | Together | `TOGETHER_API_KEY` |
 | Mistral | `MISTRAL_API_KEY` |
 | DeepSeek | `DEEPSEEK_API_KEY` |
 
-**Note on Google Authentication:**
-The Google provider uses Application Default Credentials (ADC). To set this up, install the `gcloud` CLI and run `gcloud auth application-default login` once. `crabai` will then automatically detect and use your credentials.
-
-All other providers use API keys set via environment variables. These variable names are customizable in the config file.
+All environment variable names are customizable via the config file.
 
 
 ## Installation

@@ -45,10 +45,6 @@ pub fn get_provider_with_config(
         .parse()
         .map_err(|e: String| CrabError::ConfigError(e))?;
 
-    if provider_name == ProviderName::Google {
-        return Ok(Box::new(google::GoogleProvider::new()));
-    }
-
     let api_key_var = config.api_key_var(name);
 
     match provider_name {
@@ -56,6 +52,9 @@ pub fn get_provider_with_config(
             &api_key_var,
         )?)),
         ProviderName::Anthropic => Ok(Box::new(anthropic::AnthropicProvider::new_with_env(
+            &api_key_var,
+        )?)),
+        ProviderName::Google => Ok(Box::new(google::GoogleProvider::new_with_env(
             &api_key_var,
         )?)),
         ProviderName::OpenRouter => Ok(Box::new(openrouter::OpenRouterProvider::new_with_env(
@@ -71,7 +70,6 @@ pub fn get_provider_with_config(
         ProviderName::DeepSeek => Ok(Box::new(deepseek::DeepSeekProvider::new_with_env(
             &api_key_var,
         )?)),
-        ProviderName::Google => unreachable!(), // Handled above
     }
 }
 
