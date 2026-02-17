@@ -1,41 +1,46 @@
 use async_trait::async_trait;
+use gcp_auth::provider;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 
-use crate::error::CrabError;
 use super::r#trait::Provider;
+use crate::error::CrabError;
 
-/// Google Gemini API. Uses a custom request format (not OpenAI-compatible).
-/// Authentication is via query parameter, not Authorization header.
-/// Model listing falls back to a static list if no API key is set.
+/// Google Vertex AI API.
+///
+/// Authentication: This provider uses Application Default Credentials (ADC). The user should
+/// authenticate once by running `gcloud auth application-default login`. After that, `crabai`
+/// will automatically discover and use the credentials to generate access tokens.
 pub struct GoogleProvider {
     client: Client,
-    api_key: Option<String>,
 }
 
 impl GoogleProvider {
-    const BASE_URL: &'static str = "https://generativelanguage.googleapis.com/v1beta";
+    const SEND_URL: &'static str =
+        "https://us-central1-aiplatform.googleapis.com/v1/projects/gemini-experimental/locations/us-central1/publishers/google/models";
+    const LIST_MODELS_URL: &'static str =
+        "https://us-central1-aiplatform.googleapis.com/v1/publishers/google/models";
 
-    /// Creates a new provider instance with a custom environment variable name.
-    pub fn new_with_env(env_var: &str) -> Result<Self, CrabError> {
-        Ok(Self {
+    /// Creates a new provider instance.
+    pub fn new() -> Self {
+        Self {
             client: Client::new(),
-            api_key: std::env::var(env_var).ok(),
-        })
+        }
     }
 
-    fn require_key(&self) -> Result<&str, CrabError> {
-        self.api_key
-            .as_deref()
-            .ok_or_else(|| CrabError::MissingApiKey("google".to_string()))
+    async fn get_token(&self) -> Result<String, CrabError> {
+        let provider = provider().await?;
+        let scopes = &["https://www.googleapis.com/auth/cloud-platform"];
+        let token = provider.token(scopes).await?;
+        Ok(token.as_str().to_string())
     }
 
     fn static_models() -> Vec<String> {
         vec![
-            "gemini-2.0-flash-exp".to_string(),
-            "gemini-2.0-flash-thinking-exp-01-21".to_string(),
-            "gemini-1.5-pro".to_string(),
-            "gemini-1.5-flash".to_string(),
+            "gemini-1.5-pro-latest".to_string(),
+            "gemini-1.5-flash-latest".to_string(),
+            "gemini-pro".to_string(),
+            "gemini-1.0-pro".to_string(),
         ]
     }
 }
@@ -49,7 +54,6 @@ struct GeminiRequest {
 
 #[derive(Serialize)]
 struct GeminiContent {
-    role: String,
     parts: Vec<GeminiPart>,
 }
 
@@ -93,8 +97,6 @@ struct ModelsListResponse {
 #[derive(Deserialize)]
 struct ModelEntry {
     name: String,
-    #[serde(rename = "supportedGenerationMethods", default)]
-    supported_generation_methods: Vec<String>,
 }
 
 #[async_trait]
@@ -106,17 +108,11 @@ impl Provider for GoogleProvider {
         temperature: f32,
         max_tokens: u32,
     ) -> Result<String, CrabError> {
-        let api_key = self.require_key()?;
-        let url = format!(
-            "{}/models/{}:generateContent?key={}",
-            Self::BASE_URL,
-            model,
-            api_key
-        );
+        let token = self.get_token().await?;
+        let url = format!("{}/{}:streamGenerateContent", Self::SEND_URL, model);
 
         let request = GeminiRequest {
             contents: vec![GeminiContent {
-                role: "user".to_string(),
                 parts: vec![GeminiPart {
                     text: prompt.to_string(),
                 }],
@@ -127,7 +123,13 @@ impl Provider for GoogleProvider {
             }),
         };
 
-        let resp = self.client.post(&url).json(&request).send().await?;
+        let resp = self
+            .client
+            .post(&url)
+            .bearer_auth(token)
+            .json(&request)
+            .send()
+            .await?;
 
         let status = resp.status();
         if !status.is_success() {
@@ -138,7 +140,16 @@ impl Provider for GoogleProvider {
             });
         }
 
-        let gemini_resp: GeminiResponse = resp.json().await?;
+        // Vertex AI's streaming response is a bit different. We'll take the first part.
+        let full_body = resp.text().await?;
+        let first_json = full_body
+            .lines()
+            .find(|line| line.starts_with("data: "))
+            .map(|line| line.strip_prefix("data: ").unwrap_or_default())
+            .unwrap_or_default();
+
+        let gemini_resp: GeminiResponse = serde_json::from_str(first_json)?;
+
         gemini_resp
             .candidates
             .and_then(|c| c.into_iter().next())
@@ -151,31 +162,51 @@ impl Provider for GoogleProvider {
     }
 
     async fn list_models(&self) -> Result<Vec<String>, CrabError> {
-        let api_key = match self.require_key() {
-            Ok(k) => k,
-            Err(_) => return Ok(Self::static_models()),
-        };
-        let url = format!("{}/models?key={}", Self::BASE_URL, api_key);
-        let resp = self.client.get(&url).send().await;
-
-        match resp {
-            Ok(r) if r.status().is_success() => {
-                let list: ModelsListResponse = r.json().await?;
-                // API returns names like "models/gemini-2.0-flash"; strip the prefix.
-                let mut models: Vec<String> = list
-                    .models
-                    .into_iter()
-                    .filter(|m| m.supported_generation_methods.contains(&"generateContent".to_string()))
-                    .map(|m| m.name.strip_prefix("models/").unwrap_or(&m.name).to_string())
-                    .collect();
-                models.sort();
-                Ok(models)
+        let token = match self.get_token().await {
+            Ok(t) => t,
+            Err(e) => {
+                eprintln!("Warning: Google authentication failed: {e}");
+                eprintln!("Falling back to static model list. To fix, run: gcloud auth application-default login");
+                return Ok(Self::static_models());
             }
-            _ => Ok(Self::static_models()),
+        };
+
+        let resp = self
+            .client
+            .get(Self::LIST_MODELS_URL)
+            .bearer_auth(token)
+            .send()
+            .await?;
+
+        let status = resp.status();
+        if !status.is_success() {
+            let body = resp.text().await.unwrap_or_default();
+            return Err(CrabError::ProviderError {
+                provider: "google".to_string(),
+                message: format!("Failed to list models: HTTP {status}: {body}"),
+            });
         }
+
+        let list: ModelsListResponse = resp.json().await?;
+
+        let mut models: Vec<String> = list
+            .models
+            .into_iter()
+            .filter_map(|m| m.name.split('/').last().map(|s| s.to_string()))
+            .collect();
+
+        models.sort();
+        models.dedup();
+        Ok(models)
     }
 
     fn name(&self) -> &str {
         "google"
+    }
+}
+
+impl From<gcp_auth::Error> for CrabError {
+    fn from(err: gcp_auth::Error) -> Self {
+        CrabError::ConfigError(format!("Google Authentication Error: {err}"))
     }
 }

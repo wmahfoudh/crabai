@@ -20,6 +20,10 @@ pub enum CrabError {
     #[error("Prompt not found: {0}")]
     PromptNotFound(String),
 
+    /// Clipboard operation error.
+    #[error("Clipboard error: {0}")]
+    ClipboardError(String),
+
     /// File I/O error (reading prompts, config files, cache).
     #[error(transparent)]
     Io(#[from] std::io::Error),
@@ -43,4 +47,10 @@ pub enum CrabError {
     /// Interactive prompt error from dialoguer (config wizard).
     #[error(transparent)]
     Dialoguer(#[from] dialoguer::Error),
+}
+
+impl From<Box<dyn std::error::Error>> for CrabError {
+    fn from(e: Box<dyn std::error::Error>) -> Self {
+        CrabError::ClipboardError(e.to_string())
+    }
 }

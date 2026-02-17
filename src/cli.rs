@@ -5,16 +5,12 @@ use clap::Parser;
 #[derive(Parser, Debug)]
 #[command(name = "crabai", version, about = "Minimal Unix-native multi-provider LLM CLI")]
 pub struct Cli {
-    /// Name of the prompt template to use (without .md extension).
-    /// The prompt file is loaded from the prompts directory.
-    pub prompt_name: Option<String>,
+    /// All remaining arguments after the options.
+    /// The first argument might be a prompt name.
+    /// The rest are parts of the prompt.
+    pub args: Vec<String>,
 
-    /// Provider to use for the request.
-    /// Overrides the default_provider from config.
-    #[arg(short = 'p', long = "provider")]
-    pub provider: Option<String>,
-
-    /// Model to use for the request.
+    /// Model to use for the request, in provider:model format (e.g., "anthropic:claude-3-opus").
     /// Overrides the default_model from config.
     #[arg(short = 'm', long = "model")]
     pub model: Option<String>,
@@ -39,23 +35,14 @@ pub struct Cli {
     #[arg(short = 'c', long = "config")]
     pub config: bool,
 
-    /// List all supported LLM providers and exit.
-    #[arg(short = 'P', long = "list-providers")]
-    pub list_providers: bool,
-
     /// List all available prompt templates and exit.
-    #[arg(short = 'L', long = "prompt-list")]
+    #[arg(short = 'L', long = "list-prompts")]
     pub list_prompts: bool,
 
-    /// List available models for a provider and exit.
-    /// Requires -p <provider> unless -a is used.
-    #[arg(short = 'M', long = "list-models")]
+    /// List available models for all providers and exit.
+    /// The user can select a model to copy to the clipboard.
+    #[arg(short = 'l', long = "list-models")]
     pub list_models: bool,
-
-    /// When used with --list-models, query all providers.
-    /// Output format: provider:model_name
-    #[arg(short = 'a', long = "all")]
-    pub all: bool,
 
     /// Print request metadata to STDERR before sending.
     /// Shows provider, model, temperature, and max_tokens.

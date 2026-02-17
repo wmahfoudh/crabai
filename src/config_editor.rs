@@ -1,12 +1,12 @@
+use dialoguer::{theme::ColorfulTheme, Confirm, Input, Select};
 use std::path::PathBuf;
-use dialoguer::{Input, Select, Confirm, theme::ColorfulTheme};
 
 use crate::config::Config;
 use crate::error::CrabError;
 use crate::providers::{self, get_provider_with_config};
 
 /// Interactive configuration wizard for creating or editing CrabAI config files.
-/// 
+///
 /// Workflow:
 /// 1. Load existing config if present, otherwise start with defaults
 /// 2. Prompt for default provider (from list of supported providers)
@@ -15,7 +15,7 @@ use crate::providers::{self, get_provider_with_config};
 /// 5. Prompt for temperature, max_tokens, prompts_dir, and cache settings
 /// 6. Optionally configure advanced settings (custom API key env vars)
 /// 7. Save the updated config to disk
-/// 
+///
 /// All prompts show current values as defaults for easy editing.
 pub async fn run_interactive_config(config_path: Option<&str>) -> Result<(), CrabError> {
     let theme = ColorfulTheme::default();
@@ -35,59 +35,55 @@ pub async fn run_interactive_config(config_path: Option<&str>) -> Result<(), Cra
         Config::default()
     };
 
-    // Provider selection
-    let provider_names = providers::list_provider_names();
-    let default_idx = config
-        .default_provider
-        .as_ref()
-        .and_then(|p| provider_names.iter().position(|&n| n == p))
-        .unwrap_or(0);
-
-    let provider_idx = Select::with_theme(&theme)
-        .with_prompt("Select default provider")
-        .items(&provider_names)
-        .default(default_idx)
-        .interact()?;
-
-    let selected_provider = provider_names[provider_idx];
-    config.default_provider = Some(selected_provider.to_string());
-
-    // Model selection for the chosen provider
-    println!("\nFetching models for {}...", selected_provider);
-    
-    let provider = get_provider_with_config(selected_provider, &config)?;
-    let models = match provider.list_models().await {
-        Ok(models) => models,
-        Err(e) => {
-            eprintln!("Warning: Could not fetch models: {}", e);
-            eprintln!("You can set the model manually in the config file later.");
-            vec![]
-        }
-    };
-
-    if !models.is_empty() {
-        let default_model_idx = config
-            .default_model
-            .as_ref()
-            .and_then(|m| models.iter().position(|n| n == m))
+    // Provider and model selection loop
+    loop {
+        let provider_names = providers::list_provider_names();
+        let default_provider_name = config
+            .default_provider
+            .as_deref()
+            .unwrap_or(provider_names[0]);
+        let default_idx = provider_names
+            .iter()
+            .position(|&n| n == default_provider_name)
             .unwrap_or(0);
+
+        let provider_idx = Select::with_theme(&theme)
+            .with_prompt("Select default provider")
+            .items(&provider_names)
+            .default(default_idx)
+            .interact()?;
+
+        let selected_provider = provider_names[provider_idx];
+        config.default_provider = Some(selected_provider.to_string());
+
+        println!("\nFetching models for {}...", selected_provider);
+        let provider = get_provider_with_config(selected_provider, &config)?;
+        let mut models = match provider.list_models().await {
+            Ok(models) => models,
+            Err(e) => {
+                eprintln!("Warning: Could not fetch models: {e}");
+                vec![]
+            }
+        };
+
+        // Add a "Go Back" option
+        models.insert(0, "<-- Go Back".to_string());
 
         let model_idx = Select::with_theme(&theme)
             .with_prompt("Select default model")
             .items(&models)
-            .default(default_model_idx)
+            .default(0)
             .interact()?;
 
-        config.default_model = Some(models[model_idx].clone());
-    } else {
-        let model_input: String = Input::with_theme(&theme)
-            .with_prompt("Enter default model name")
-            .allow_empty(true)
-            .interact_text()?;
-
-        if !model_input.is_empty() {
-            config.default_model = Some(model_input);
+        if model_idx == 0 {
+            // User selected "Go Back"
+            println!(); // Add a newline for better formatting
+            continue;
         }
+
+        let selected_model = models[model_idx].clone();
+        config.default_model = Some(format!("{}:{}", selected_provider, selected_model));
+        break;
     }
 
     // Temperature
@@ -147,10 +143,7 @@ pub async fn run_interactive_config(config_path: Option<&str>) -> Result<(), Cra
     config.model_cache = Some(cache_enabled);
 
     if cache_enabled {
-        let ttl_str = config
-            .model_cache_ttl_hours
-            .unwrap_or(24)
-            .to_string();
+        let ttl_str = config.model_cache_ttl_hours.unwrap_or(24).to_string();
 
         let ttl: String = Input::with_theme(&theme)
             .with_prompt("Cache TTL (hours)")
@@ -181,7 +174,7 @@ pub async fn run_interactive_config(config_path: Option<&str>) -> Result<(), Cra
     // Ensure all providers have their default API key vars in the map
     for provider_name in providers::list_provider_names() {
         let default_var = Config::default_api_key_var(provider_name);
-        
+
         if configure_advanced {
             let current_var = api_key_vars
                 .get(provider_name)

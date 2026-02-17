@@ -32,11 +32,20 @@ pub fn list_prompts(prompts_dir: &Path) -> Result<Vec<String>, CrabError> {
     Ok(prompts)
 }
 
-/// Combine prompt template with optional STDIN content. When STDIN is
-/// present, the two are joined with a "\n\n-----\n\n" separator.
-pub fn assemble(prompt: &str, stdin: Option<&str>) -> String {
-    match stdin {
-        Some(input) => format!("{prompt}\n\n-----\n\n{input}"),
-        None => prompt.to_string(),
+/// Combine prompt template, additional arguments, and optional STDIN content.
+/// All parts are joined with a consistent separator.
+pub fn assemble(prompt: &str, args: &[String], stdin: Option<&str>) -> String {
+    let mut final_prompt = String::from(prompt);
+
+    for arg in args {
+        final_prompt.push_str("\n\n");
+        final_prompt.push_str(arg);
     }
+
+    if let Some(input) = stdin {
+        final_prompt.push_str("\n\n");
+        final_prompt.push_str(input);
+    }
+
+    final_prompt
 }

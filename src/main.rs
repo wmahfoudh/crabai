@@ -18,7 +18,7 @@ use cli::Cli;
 use config::Config;
 use error::CrabError;
 use model_cache::ModelCache;
-use providers::{list_provider_names, get_provider_with_config};
+use providers::{get_provider_with_config, list_provider_names};
 
 #[tokio::main]
 async fn main() {
@@ -31,12 +31,12 @@ async fn main() {
 }
 
 /// Main execution flow for CrabAI.
-/// 
+///
 /// Processing order:
 /// 1. Interactive config mode (--config) - launches wizard and exits
-/// 2. List commands (--list-providers, --list-models, --prompt-list) - print and exit
+/// 2. List commands (--list-models, --list-prompts) - print and exit
 /// 3. Normal operation - resolve provider/model/prompt and send request
-/// 
+///
 /// Resolution precedence for all settings: CLI flags > config file > defaults
 async fn run(cli: Cli) -> Result<(), CrabError> {
     // Interactive config mode: launch wizard and exit
@@ -52,23 +52,20 @@ async fn run(cli: Cli) -> Result<(), CrabError> {
         match BundledPrompts::install_to(&prompts_dir) {
             Ok(count) if count > 0 => {
                 if cli.verbose {
-                    eprintln!("Installed {} bundled prompt(s) to {}", count, prompts_dir.display());
+                    eprintln!(
+                        "Installed {} bundled prompt(s) to {}",
+                        count,
+                        prompts_dir.display()
+                    );
                 }
             }
-            Ok(_) => {}, // No new prompts to install
+            Ok(_) => {} // No new prompts to install
             Err(e) => {
                 if cli.verbose {
                     eprintln!("Warning: Could not install bundled prompts: {}", e);
                 }
             }
         }
-    }
-
-    if cli.list_providers {
-        for name in list_provider_names() {
-            println!("{name}");
-        }
-        return Ok(());
     }
 
     if cli.list_prompts {
@@ -84,45 +81,58 @@ async fn run(cli: Cli) -> Result<(), CrabError> {
         return list_models(&cli, &config).await;
     }
 
-    // Resolution order: CLI flag > config file > prompt for config creation.
-    let provider_name = match cli.provider.or(config.default_provider.clone()) {
-        Some(p) => p,
+    // Extract provider and model from --model flag or config
+    let (provider_name, model_name) = match cli.model.or(config.default_model.clone()) {
+        Some(model_str) => {
+            if model_str.contains(':') {
+                let parts: Vec<&str> = model_str.split(':').collect();
+                (parts[0].to_string(), parts[1].to_string())
+            } else {
+                // If no provider is specified, use the default provider from config
+                let provider = config.default_provider.clone().ok_or_else(|| {
+                    CrabError::ConfigError(
+                        "No provider specified in model and no default provider in config."
+                            .to_string(),
+                    )
+                })?;
+                (provider, model_str)
+            }
+        }
         None => {
-            // No provider configured - offer to create config
-            eprintln!("No provider configured.");
+            // No model or provider configured - offer to create config
+            eprintln!("No model configured.");
             eprintln!("Would you like to create a configuration file now? (y/n)");
-            
+
             let mut response = String::new();
             std::io::stdin().read_line(&mut response)?;
-            
+
             if response.trim().to_lowercase().starts_with('y') {
                 config_editor::run_interactive_config(cli.use_config.as_deref()).await?;
                 eprintln!("\nConfiguration created! Please run crabai again.");
                 return Ok(());
             } else {
                 return Err(CrabError::ConfigError(
-                    "No provider specified. Use -p <provider> or run 'crabai --config' to configure."
+                    "No model specified. Use -m <provider:model> or run 'crabai --config' to configure."
                         .to_string(),
                 ));
             }
         }
     };
+
     let provider = get_provider_with_config(&provider_name, &config)?;
 
-    let model = match cli.model.or(config.default_model.clone()) {
-        Some(m) => m,
-        None => {
-            return Err(CrabError::ConfigError(
-                "No model specified. Use -m <model> or run 'crabai --config' to configure.".to_string(),
-            ));
+    // Handle prompt assembly
+    let (prompt_content, remaining_args) = if !cli.args.is_empty() {
+        let prompts_dir = config.prompts_dir();
+        let first_arg = &cli.args[0];
+        match prompt_loader::load_prompt(first_arg, &prompts_dir) {
+            Ok(content) => (content, &cli.args[1..]), // First arg is a prompt name
+            Err(_) => (first_arg.to_string(), &cli.args[1..]), // First arg is a literal prompt
         }
+    } else {
+        // No arguments, check for stdin
+        ("".to_string(), &[][..])
     };
-
-    let prompt_name = cli.prompt_name.ok_or_else(|| {
-        CrabError::ConfigError("No prompt specified. Provide a prompt name as argument.".to_string())
-    })?;
-    let prompts_dir = config.prompts_dir();
-    let prompt_content = prompt_loader::load_prompt(&prompt_name, &prompts_dir)?;
 
     // Only read STDIN when input is piped (not a TTY).
     let stdin_content = if !atty::is(atty::Stream::Stdin) {
@@ -133,20 +143,32 @@ async fn run(cli: Cli) -> Result<(), CrabError> {
         None
     };
 
-    let final_prompt = prompt_loader::assemble(&prompt_content, stdin_content.as_deref());
+    let final_prompt =
+        prompt_loader::assemble(&prompt_content, remaining_args, stdin_content.as_deref());
 
-    let temperature = cli.temperature.unwrap_or_else(|| config.resolve_temperature());
-    let max_tokens = cli.max_tokens.unwrap_or_else(|| config.resolve_max_tokens());
+    if final_prompt.trim().is_empty() {
+        return Err(CrabError::ConfigError(
+            "Prompt is empty. Provide a prompt as an argument or pipe content from stdin."
+                .to_string(),
+        ));
+    }
+
+    let temperature = cli
+        .temperature
+        .unwrap_or_else(|| config.resolve_temperature());
+    let max_tokens = cli
+        .max_tokens
+        .unwrap_or_else(|| config.resolve_max_tokens());
 
     if cli.verbose {
         eprintln!("Provider: {}", provider.name());
-        eprintln!("Model: {model}");
+        eprintln!("Model: {model_name}");
         eprintln!("Temperature: {temperature}");
         eprintln!("Max tokens: {max_tokens}");
     }
 
     let response = provider
-        .send(&model, &final_prompt, temperature, max_tokens)
+        .send(&model_name, &final_prompt, temperature, max_tokens)
         .await?;
 
     // Raw output only; no trailing newline beyond what the model returns.
@@ -156,48 +178,28 @@ async fn run(cli: Cli) -> Result<(), CrabError> {
 }
 
 /// Handles the --list-models command.
-/// 
-/// Without -a: Lists models for a single provider (requires -p or default_provider).
-/// With -a: Lists models for all providers in "provider:model" format.
-/// 
-/// Uses model cache if enabled. Errors during all-provider listing are silently
-/// skipped unless --verbose is set.
+/// Fetches models for all providers, displays an interactive list,
+/// and copies the selected model identifier to the clipboard.
 async fn list_models(cli: &Cli, config: &Config) -> Result<(), CrabError> {
     let config_dir = Config::config_dir();
     let mut cache = ModelCache::load(&config_dir);
     let ttl = config.cache_ttl_hours();
     let cache_enabled = config.model_cache_enabled();
 
-    if cli.all {
-        for name in list_provider_names() {
-            let models = get_models(name, &mut cache, ttl, cache_enabled).await;
-            match models {
-                Ok(models) => {
-                    for m in models {
-                        println!("{name}:{m}");
-                    }
-                }
-                Err(e) => {
-                    if cli.verbose {
-                        eprintln!("Warning: {name}: {e}");
-                    }
+    let mut all_models = Vec::new();
+    for name in list_provider_names() {
+        let models = get_models(name, &mut cache, ttl, cache_enabled, config).await;
+        match models {
+            Ok(models) => {
+                for m in models {
+                    all_models.push(format!("{name}:{m}"));
                 }
             }
-        }
-    } else {
-        let provider_name = cli
-            .provider
-            .as_deref()
-            .or(config.default_provider.as_deref())
-            .ok_or_else(|| {
-                CrabError::ConfigError(
-                    "Use -p <provider> or -a to list models for all providers.".to_string(),
-                )
-            })?;
-
-        let models = get_models(provider_name, &mut cache, ttl, cache_enabled).await?;
-        for m in models {
-            println!("{m}");
+            Err(e) => {
+                if cli.verbose {
+                    eprintln!("Warning: {name}: {e}");
+                }
+            }
         }
     }
 
@@ -205,20 +207,39 @@ async fn list_models(cli: &Cli, config: &Config) -> Result<(), CrabError> {
         let _ = cache.save(&config_dir);
     }
 
+    if all_models.is_empty() {
+        return Err(CrabError::ConfigError(
+            "Could not fetch any models. Check your API keys and network connection.".to_string(),
+        ));
+    }
+
+    all_models.sort();
+
+    let selection = dialoguer::FuzzySelect::new()
+        .with_prompt("Select a model to copy to clipboard")
+        .items(&all_models)
+        .default(0)
+        .interact_opt()?;
+
+    if let Some(index) = selection {
+        let selected_model: &String = &all_models[index];
+        // Use a clipboard crate to copy to clipboard
+        use clipboard::{ClipboardContext, ClipboardProvider};
+        let mut ctx: ClipboardContext = ClipboardProvider::new()?;
+        ctx.set_contents(selected_model.to_string())?;
+        eprintln!("Copied '{selected_model}' to clipboard.");
+    }
+
     Ok(())
 }
 
 /// Retrieves model list for a provider, using cache if available and valid.
-/// 
-/// Cache behavior:
-/// - If cache is enabled and entry is fresh, returns cached list
-/// - Otherwise, fetches from provider API and updates cache
-/// - Uses default Config for API key environment variable resolution
 async fn get_models(
     provider_name: &str,
     cache: &mut ModelCache,
     ttl: u64,
     cache_enabled: bool,
+    config: &Config,
 ) -> Result<Vec<String>, CrabError> {
     if cache_enabled {
         if let Some(cached) = cache.get(provider_name, ttl) {
@@ -226,8 +247,7 @@ async fn get_models(
         }
     }
 
-    let config = Config::default();
-    let provider = get_provider_with_config(provider_name, &config)?;
+    let provider = get_provider_with_config(provider_name, config)?;
     let models = provider.list_models().await?;
 
     if cache_enabled {
