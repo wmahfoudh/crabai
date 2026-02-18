@@ -1,13 +1,14 @@
 # CrabAI
 
-Minimal Unix-native multi-provider LLM CLI written in Rust. Single static binary. STDIN in, model output out. Composable in shell pipelines.
-
+Minimal multi-provider LLM CLI. Single static binary. STDIN in, model output out. Composable in shell pipelines.
 
 ## Context & Philosophy
 
 I'm a big fan of [Fabric](https://github.com/danielmiessler/fabric) by Daniel Miessler, and I've had the privilege of contributing to the project. Fabric pioneered the concept of using AI with structured prompts for everyday tasks. However, as Fabric grew, it became increasingly complex, a "monster" 🙂 in both good and bad ways.
 
-CrabAI is inspired by Fabric's core idea but takes a minimalist approach. It's designed to be an **infrastructure-level tool** that does one thing well: send a prompt to an LLM and return the response.
+CrabAI is inspired by Fabric's core idea but takes a minimalist approach. It's designed to be an small, self-contained binary that does one thing well: send a prompt to an LLM and return the response.
+
+**Please note** that I created CrabAI for my own use and I do not exclude bugs, so do not hesitate raise issues. I'll try to address them if I have time.
 
 **Design principles:**
 - One static Rust binary, no Python or Node.js dependencies
@@ -25,7 +26,6 @@ CrabAI is inspired by Fabric's core idea but takes a minimalist approach. It's d
 
 CrabAI is terminal tool for quick, composable AI tasks.
 
-
 ## Features
 
 - **8 LLM providers**: OpenAI, Anthropic, Google, OpenRouter, Groq, Together, Mistral, DeepSeek
@@ -35,7 +35,6 @@ CrabAI is terminal tool for quick, composable AI tasks.
 - **Markdown Prompts**: Template system with sample prompts included and auto-installed.
 - **Universal Argument & Pipeline Support**: Construct prompts from arguments, files, and piped `STDIN`.
 - **Interactive Configuration**: Step-by-step setup wizard with auto-configuration on first run.
-
 
 ## Supported Providers
 
@@ -50,8 +49,7 @@ CrabAI is terminal tool for quick, composable AI tasks.
 | Mistral | `MISTRAL_API_KEY` |
 | DeepSeek | `DEEPSEEK_API_KEY` |
 
-All environment variable names are customizable via the config file.
-
+All environment variable names are customizable via the config file. This is useful when other tools have a different name and you want to avoid conflicts.
 
 ## Installation
 
@@ -104,8 +102,6 @@ mistral = "MISTRAL_API_KEY"
 deepseek = "DEEPSEEK_API_KEY"
 ```
 
-
-
 ### Config Keys
 
 | Key | Type | Default | Description |
@@ -121,7 +117,6 @@ deepseek = "DEEPSEEK_API_KEY"
 The `prompts_dir` value supports `~/` expansion.
 
 **Setting precedence:** CLI flags > config file > internal defaults
-
 
 ## CLI Usage
 
@@ -177,7 +172,6 @@ cat story.txt | crabai -m groq:gemma2-9b-it "Summarize this story in one sentenc
 cat file.txt | crabai summarize -v
 ```
 
-
 ## Prompts
 
 Prompts are Markdown files in `~/.config/crabai/prompts/`. Sample prompts are included and auto-installed on first run.
@@ -189,15 +183,13 @@ echo "Your prompt text" > ~/.config/crabai/prompts/summarize.md
 cat document.txt | crabai summarize
 ```
 
-
 ## Model Capabilities & Discovery
 
 CrabAI fetches model lists and capabilities (token limits, parameter support) dynamically from provider APIs. 
 
-**Self-Healing Logic:** If an API request fails due to a limit mismatch or unsupported parameter, CrabAI parses the error message, "learns" the correct constraint, and automatically updates the local cache.
+**Self-Healing Logic:** If an API request fails due to a limit mismatch or unsupported parameter, CrabAI parses the error message, tries to "learn" the correct constraint from the error message, and updates the local cache if possible.
 
-**Caching:** Model info is cached at `~/.config/crabai/model_cache.json`. A bundled seed cache provides immediate support for ~100 common models on first run.
-
+**Caching:** Model info is cached at `~/.config/crabai/model_cache.json`. A bundled seed cache provides immediate support many common models on first run.
 
 ## How It Works
 
@@ -205,7 +197,6 @@ CrabAI fetches model lists and capabilities (token limits, parameter support) dy
 2. Resolve provider & model from `-m` flag or config → Assemble prompt from args and STDIN
 3. Send to LLM → Print response to STDOUT
 4. Errors go to STDERR with exit code 1
-
 
 ## Extending
 
