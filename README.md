@@ -8,7 +8,7 @@ I'm a big fan of [Fabric](https://github.com/danielmiessler/fabric) by Daniel Mi
 
 CrabAI is inspired by Fabric's core idea but takes a minimalist approach. It's designed to be an small, self-contained binary that does one thing well: send a prompt to an LLM and return the response.
 
-**Please note** that I created CrabAI for my own use and I do not exclude bugs, so do not hesitate raise issues. I'll try to address them if I have time.
+*Please note that CrabAI was developed for personal use, and while I’ve done my best to ensure its reliability, bugs may still occur. If you encounter any issues, feel free to open an issue, I’ll do my best to address them when time permits.*
 
 **Design principles:**
 - One static Rust binary, no Python or Node.js dependencies
