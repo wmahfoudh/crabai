@@ -4,6 +4,7 @@ use reqwest::Client;
 use super::openai_compat;
 use super::r#trait::Provider;
 use crate::error::CrabError;
+use crate::types::ModelInfo;
 
 /// Together AI inference API. OpenAI-compatible.
 pub struct TogetherProvider {
@@ -28,13 +29,16 @@ impl TogetherProvider {
             .ok_or_else(|| CrabError::MissingApiKey("together".to_string()))
     }
 
-    fn static_models() -> Vec<String> {
+    fn static_models() -> Vec<ModelInfo> {
         vec![
-            "meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo".to_string(),
-            "meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo".to_string(),
-            "mistralai/Mixtral-8x7B-Instruct-v0.1".to_string(),
-            "Qwen/Qwen2.5-72B-Instruct-Turbo".to_string(),
+            "meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo",
+            "meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo",
+            "mistralai/Mixtral-8x7B-Instruct-v0.1",
+            "Qwen/Qwen2.5-72B-Instruct-Turbo",
         ]
+        .into_iter()
+        .map(ModelInfo::new)
+        .collect()
     }
 }
 
@@ -44,8 +48,9 @@ impl Provider for TogetherProvider {
         &self,
         model: &str,
         prompt: &str,
-        temperature: f32,
+        temperature: Option<f32>,
         max_tokens: u32,
+        max_tokens_key: Option<String>,
     ) -> Result<String, CrabError> {
         openai_compat::send_chat_request(
             &self.client,
@@ -55,11 +60,13 @@ impl Provider for TogetherProvider {
             prompt,
             temperature,
             max_tokens,
+            max_tokens_key,
         )
         .await
     }
 
-    async fn list_models(&self) -> Result<Vec<String>, CrabError> {
+
+    async fn list_models(&self) -> Result<Vec<ModelInfo>, CrabError> {
         let api_key = match self.require_key() {
             Ok(k) => k,
             Err(_) => return Ok(Self::static_models()),
@@ -72,17 +79,5 @@ impl Provider for TogetherProvider {
 
     fn name(&self) -> &str {
         "together"
-    }
-
-    fn get_max_tokens(&self, model: &str) -> Option<u32> {
-        match model {
-            // Sourced from Together AI's model documentation. Using context window
-            // size as the max output is not explicitly limited to a smaller value.
-            "meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo" => Some(131072),
-            "meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo" => Some(131072),
-            "mistralai/Mixtral-8x7B-Instruct-v0.1" => Some(32768),
-            "Qwen/Qwen2.5-72B-Instruct-Turbo" => Some(65536),
-            _ => None,
-        }
     }
 }

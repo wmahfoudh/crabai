@@ -1,6 +1,6 @@
 use async_trait::async_trait;
-
 use crate::error::CrabError;
+use crate::types::ModelInfo;
 
 /// Common interface for all LLM provider implementations.
 ///
@@ -23,34 +23,22 @@ pub trait Provider: Send + Sync {
         &self,
         model: &str,
         prompt: &str,
-        temperature: f32,
+        temperature: Option<f32>,
         max_tokens: u32,
+        max_tokens_key: Option<String>,
     ) -> Result<String, CrabError>;
 
-    /// Returns a list of available model identifiers for this provider.
-    ///
-    /// Implementation varies by provider:
-    /// - Some query a models API endpoint (OpenAI, Google, OpenRouter, etc.)
-    /// - Some return a static fallback list (Anthropic, when no API key set)
-    /// - Some use a hybrid approach (Google, DeepSeek - API with fallback)
-    ///
-    /// Model IDs are returned in a provider-specific format suitable for
-    /// use with the send() method.
-    async fn list_models(&self) -> Result<Vec<String>, CrabError>;
+    /// Returns a list of available model identifiers and their capabilities.
+    async fn list_models(&self) -> Result<Vec<ModelInfo>, CrabError>;
 
     /// Returns the lowercase provider identifier.
     /// Examples: "openai", "anthropic", "google", "mistral"
     fn name(&self) -> &str;
 
-    /// Returns the maximum number of tokens for a given model.
-    /// Default implementation returns None.
-    fn get_max_tokens(&self, _model: &str) -> Option<u32> {
-        None
-    }
-
-    /// Fetches the maximum number of tokens for a given model from the API.
-    /// Default implementation calls the synchronous get_max_tokens.
-    async fn fetch_max_tokens(&self, model: &str) -> Result<Option<u32>, CrabError> {
-        Ok(self.get_max_tokens(model))
+    /// Sanitizes parameters based on model-specific constraints.
+    /// Returns (final_temperature, final_max_tokens).
+    /// If temperature is None, it should be omitted from the provider's API request.
+    fn sanitize_params(&self, _model: &str, temperature: f32, max_tokens: u32) -> (Option<f32>, u32) {
+        (Some(temperature), max_tokens)
     }
 }

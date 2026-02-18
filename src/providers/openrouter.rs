@@ -4,6 +4,7 @@ use reqwest::Client;
 use super::openai_compat;
 use super::r#trait::Provider;
 use crate::error::CrabError;
+use crate::types::ModelInfo;
 
 /// OpenRouter aggregator. OpenAI-compatible API.
 pub struct OpenRouterProvider {
@@ -28,73 +29,18 @@ impl OpenRouterProvider {
             .ok_or_else(|| CrabError::MissingApiKey("openrouter".to_string()))
     }
 
-    fn static_models() -> Vec<String> {
+    fn static_models() -> Vec<ModelInfo> {
         vec![
-            "anthropic/claude-sonnet-4-20250514".to_string(),
-            "openai/gpt-4o".to_string(),
-            "google/gemini-2.0-flash-exp".to_string(),
-            "meta-llama/llama-3.3-70b-instruct".to_string(),
+            "anthropic/claude-sonnet-4-20250514",
+            "openai/gpt-4o",
+            "google/gemini-2.0-flash-exp",
+            "meta-llama/llama-3.3-70b-instruct",
         ]
-    }
-}
-
-#[async_trait]
-impl Provider for OpenRouterProvider {
-    async fn send(
-        &self,
-        model: &str,
-        prompt: &str,
-        temperature: f32,
-        max_tokens: u32,
-    ) -> Result<String, CrabError> {
-        openai_compat::send_chat_request(
-            &self.client,
-            Self::BASE_URL,
-            self.require_key()?,
-            model,
-            prompt,
-            temperature,
-            max_tokens,
-        )
-        .await
+        .into_iter()
+        .map(ModelInfo::new)
+        .collect()
     }
 
-    async fn list_models(&self) -> Result<Vec<String>, CrabError> {
-        match self.list_models_api().await {
-            Ok(models) => Ok(models.into_iter().map(|m| m.id).collect()),
-            Err(_) => Ok(Self::static_models()),
-        }
-    }
-
-    fn name(&self) -> &str {
-        "openrouter"
-    }
-
-    async fn fetch_max_tokens(&self, model_id: &str) -> Result<Option<u32>, CrabError> {
-        let models = self.list_models_api().await?;
-
-        let model = models.into_iter().find(|m| m.id == model_id);
-
-        Ok(model.and_then(|m| m.top_provider.max_completion_tokens))
-    }
-}
-
-// Add the structs needed for deserialization of the model list
-#[derive(serde::Deserialize)]
-struct OpenRouterModel {
-    id: String,
-    #[serde(rename = "top_provider")]
-    top_provider: TopProvider,
-}
-
-#[derive(serde::Deserialize)]
-struct TopProvider {
-    #[serde(rename = "max_completion_tokens")]
-    max_completion_tokens: Option<u32>,
-}
-
-// Modify the existing list_models_api to use the new structs
-impl OpenRouterProvider {
     async fn list_models_api(&self) -> Result<Vec<OpenRouterModel>, CrabError> {
         #[derive(serde::Deserialize)]
         struct ModelsList {
@@ -123,4 +69,61 @@ impl OpenRouterProvider {
 
         Ok(models_list.data)
     }
+}
+
+#[async_trait]
+impl Provider for OpenRouterProvider {
+    async fn send(
+        &self,
+        model: &str,
+        prompt: &str,
+        temperature: Option<f32>,
+        max_tokens: u32,
+        max_tokens_key: Option<String>,
+    ) -> Result<String, CrabError> {
+        let api_key = self.require_key()?;
+        openai_compat::send_chat_request(
+            &self.client,
+            Self::BASE_URL,
+            api_key,
+            model,
+            prompt,
+            temperature,
+            max_tokens,
+            max_tokens_key,
+        )
+        .await
+    }
+
+    async fn list_models(&self) -> Result<Vec<ModelInfo>, CrabError> {
+        match self.list_models_api().await {
+            Ok(models) => Ok(models
+                .into_iter()
+                .map(|m| {
+                    let mut info = ModelInfo::new(&m.id);
+                    info.max_output_tokens = m.top_provider.max_completion_tokens;
+                    info
+                })
+                .collect()),
+            Err(_) => Ok(Self::static_models()),
+        }
+    }
+
+    fn name(&self) -> &str {
+        "openrouter"
+    }
+}
+
+// Add the structs needed for deserialization of the model list
+#[derive(serde::Deserialize)]
+struct OpenRouterModel {
+    id: String,
+    #[serde(rename = "top_provider")]
+    top_provider: TopProvider,
+}
+
+#[derive(serde::Deserialize)]
+struct TopProvider {
+    #[serde(rename = "max_completion_tokens")]
+    max_completion_tokens: Option<u32>,
 }

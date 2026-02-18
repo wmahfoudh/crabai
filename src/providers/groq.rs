@@ -4,6 +4,7 @@ use reqwest::Client;
 use super::openai_compat;
 use super::r#trait::Provider;
 use crate::error::CrabError;
+use crate::types::ModelInfo;
 
 /// Groq inference API. OpenAI-compatible.
 pub struct GroqProvider {
@@ -28,13 +29,22 @@ impl GroqProvider {
             .ok_or_else(|| CrabError::MissingApiKey("groq".to_string()))
     }
 
-    fn static_models() -> Vec<String> {
+    fn static_models() -> Vec<ModelInfo> {
         vec![
-            "llama-3.3-70b-versatile".to_string(),
-            "llama-3.1-70b-versatile".to_string(),
-            "mixtral-8x7b-32768".to_string(),
-            "gemma2-9b-it".to_string(),
+            "llama-3.3-70b-versatile",
+            "llama-3.1-70b-versatile",
+            "mixtral-8x7b-32768",
+            "gemma2-9b-it",
         ]
+        .into_iter()
+        .map(|id| {
+            let mut info = ModelInfo::new(id);
+            if id.contains("llama") {
+                info.max_output_tokens = Some(32768);
+            }
+            info
+        })
+        .collect()
     }
 }
 
@@ -44,22 +54,25 @@ impl Provider for GroqProvider {
         &self,
         model: &str,
         prompt: &str,
-        temperature: f32,
+        temperature: Option<f32>,
         max_tokens: u32,
+        max_tokens_key: Option<String>,
     ) -> Result<String, CrabError> {
+        let api_key = self.require_key()?;
         openai_compat::send_chat_request(
             &self.client,
             Self::BASE_URL,
-            self.require_key()?,
+            api_key,
             model,
             prompt,
             temperature,
             max_tokens,
+            max_tokens_key,
         )
         .await
     }
 
-    async fn list_models(&self) -> Result<Vec<String>, CrabError> {
+    async fn list_models(&self) -> Result<Vec<ModelInfo>, CrabError> {
         let api_key = match self.require_key() {
             Ok(k) => k,
             Err(_) => return Ok(Self::static_models()),
@@ -72,18 +85,5 @@ impl Provider for GroqProvider {
 
     fn name(&self) -> &str {
         "groq"
-    }
-
-    fn get_max_tokens(&self, model: &str) -> Option<u32> {
-        match model {
-            // Sourced from Groq's model documentation.
-            "llama-3.3-70b-versatile" => Some(32768),
-            "llama-3.1-70b-versatile" => Some(131072),
-            "llama-3.1-8b-instant" => Some(131072),
-            "mixtral-8x7b-32768" => Some(32768),
-            "gemma2-9b-it" => Some(65536),
-            "gemma-7b-it" => Some(8192),
-            _ => None,
-        }
     }
 }

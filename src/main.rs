@@ -31,13 +31,6 @@ async fn main() {
 }
 
 /// Main execution flow for CrabAI.
-///
-/// Processing order:
-/// 1. Interactive config mode (--config) - launches wizard and exits
-/// 2. List commands (--list-models, --list-prompts) - print and exit
-/// 3. Normal operation - resolve provider/model/prompt and send request
-///
-/// Resolution precedence for all settings: CLI flags > config file > defaults
 async fn run(cli: Cli) -> Result<(), CrabError> {
     // Interactive config mode: launch wizard and exit
     if cli.config {
@@ -49,23 +42,7 @@ async fn run(cli: Cli) -> Result<(), CrabError> {
     // Auto-install bundled prompts if any are missing
     let prompts_dir = config.prompts_dir();
     if BundledPrompts::has_missing_prompts(&prompts_dir) {
-        match BundledPrompts::install_to(&prompts_dir) {
-            Ok(count) if count > 0 => {
-                if cli.verbose {
-                    eprintln!(
-                        "Installed {} bundled prompt(s) to {}",
-                        count,
-                        prompts_dir.display()
-                    );
-                }
-            }
-            Ok(_) => {} // No new prompts to install
-            Err(e) => {
-                if cli.verbose {
-                    eprintln!("Warning: Could not install bundled prompts: {}", e);
-                }
-            }
-        }
+        let _ = BundledPrompts::install_to(&prompts_dir);
     }
 
     if cli.list_prompts {
@@ -88,7 +65,6 @@ async fn run(cli: Cli) -> Result<(), CrabError> {
                 let parts: Vec<&str> = model_str.split(':').collect();
                 (parts[0].to_string(), parts[1].to_string())
             } else {
-                // If no provider is specified, use the default provider from config
                 let provider = config.default_provider.clone().ok_or_else(|| {
                     CrabError::ConfigError(
                         "No provider specified in model and no default provider in config."
@@ -99,7 +75,6 @@ async fn run(cli: Cli) -> Result<(), CrabError> {
             }
         }
         None => {
-            // No model or provider configured - offer to create config
             eprintln!("No model configured.");
             eprintln!("Would you like to create a configuration file now? (y/n)");
 
@@ -108,7 +83,6 @@ async fn run(cli: Cli) -> Result<(), CrabError> {
 
             if response.trim().to_lowercase().starts_with('y') {
                 config_editor::run_interactive_config(cli.use_config.as_deref()).await?;
-                eprintln!("\nConfiguration created! Please run crabai again.");
                 return Ok(());
             } else {
                 return Err(CrabError::ConfigError(
@@ -126,15 +100,13 @@ async fn run(cli: Cli) -> Result<(), CrabError> {
         let prompts_dir = config.prompts_dir();
         let first_arg = &cli.args[0];
         match prompt_loader::load_prompt(first_arg, &prompts_dir) {
-            Ok(content) => (content, &cli.args[1..]), // First arg is a prompt name
-            Err(_) => (first_arg.to_string(), &cli.args[1..]), // First arg is a literal prompt
+            Ok(content) => (content, &cli.args[1..]),
+            Err(_) => (first_arg.to_string(), &cli.args[1..]),
         }
     } else {
-        // No arguments, check for stdin
         ("".to_string(), &[][..])
     };
 
-    // Only read STDIN when input is piped (not a TTY).
     let stdin_content = if !atty::is(atty::Stream::Stdin) {
         let mut buf = String::new();
         std::io::stdin().read_to_string(&mut buf)?;
@@ -153,17 +125,31 @@ async fn run(cli: Cli) -> Result<(), CrabError> {
         ));
     }
 
+    let config_dir = Config::config_dir();
+    let mut cache = ModelCache::load(&config_dir);
+    let ttl = config.cache_ttl_hours();
+    let cache_enabled = config.model_cache_enabled();
+
+    // Try to get model info from cache to resolve "max" tokens and other constraints
+    let model_info = if cache_enabled {
+        get_models(&provider_name, &mut cache, ttl, true, &config)
+            .await
+            .ok()
+            .and_then(|models| models.into_iter().find(|m| m.id == model_name))
+    } else {
+        None
+    };
+
     let temperature = cli
         .temperature
         .unwrap_or_else(|| config.resolve_temperature());
+
     let max_tokens = match cli.max_tokens {
         Some(s) => {
             if s.to_lowercase() == "max" {
-                provider
-                    .fetch_max_tokens(&model_name)
-                    .await
-                    .ok()
-                    .flatten()
+                model_info
+                    .as_ref()
+                    .and_then(|m| m.max_output_tokens)
                     .unwrap_or(4096)
             } else {
                 s.parse::<u32>()
@@ -173,68 +159,103 @@ async fn run(cli: Cli) -> Result<(), CrabError> {
         None => config.resolve_max_tokens(),
     };
 
+    let (mut final_temperature, mut final_max_tokens) =
+        provider.sanitize_params(&model_name, temperature, max_tokens);
+
+    // Apply cached info if it exists and contradicts/enriches
+    if let Some(info) = &model_info {
+        if !info.supports_temperature {
+            final_temperature = None;
+        }
+        if let Some(limit) = info.max_output_tokens {
+            final_max_tokens = final_max_tokens.min(limit);
+        }
+    }
+
     if cli.verbose {
         eprintln!("Provider: {}", provider.name());
         eprintln!("Model: {model_name}");
-        eprintln!("Temperature: {temperature}");
-        eprintln!("Max tokens: {max_tokens}");
+        eprintln!("Temperature (requested): {temperature}");
+        eprintln!("Temperature (final): {:?}", final_temperature);
+        eprintln!("Max tokens (requested): {max_tokens}");
+        eprintln!("Max tokens (final): {final_max_tokens}");
     }
 
-    // Clamp max_tokens to the model's actual limit to prevent API errors.
-    let mut final_max_tokens = max_tokens;
-    if let Some(model_max) = provider.fetch_max_tokens(&model_name).await.ok().flatten() {
-        if final_max_tokens > model_max {
-            if cli.verbose {
-                eprintln!(
-                    "Warning: max_tokens ({}) exceeds model's limit ({}), clamping to {}.",
-                    final_max_tokens, model_max, model_max
-                );
-            }
-            final_max_tokens = model_max;
-        }
-    }
-
-    // Clamp temperature to the model's valid range.
-    let mut final_temperature = temperature;
-    if model_name == "gpt-5" {
-        if final_temperature != 1.0 {
-            if cli.verbose {
-                eprintln!(
-                    "Warning: temperature ({}) is not supported by gpt-5. Forcing to the only supported value: 1.0.",
-                    final_temperature
-                );
-            }
-            final_temperature = 1.0;
-        }
-    } else if model_name.starts_with("gpt-") && final_temperature > 1.0 {
-        // Handle other gpt models that might have a 1.0 limit.
-        if cli.verbose {
-            eprintln!(
-                "Warning: temperature ({}) exceeds this model's likely limit (1.0), clamping to 1.0.",
-                final_temperature
-            );
-        }
-        final_temperature = 1.0;
-    }
-
-    let response = provider
+    let response_result = provider
         .send(
             &model_name,
             &final_prompt,
             final_temperature,
             final_max_tokens,
+            model_info.as_ref().and_then(|m| m.max_tokens_param.clone()),
         )
-        .await?;
+        .await;
 
-    // Raw output only; no trailing newline beyond what the model returns.
-    print!("{response}");
+    match response_result {
+        Ok(response) => {
+            print!("{response}");
+            Ok(())
+        }
+        Err(e) => {
+            // Attempt to learn from error message
+            if let CrabError::ProviderError { message, .. } = &e {
+                let mut updated = false;
+                let mut info = model_info.unwrap_or_else(|| types::ModelInfo::new(&model_name));
 
-    Ok(())
+                if let Some(new_limit) = try_extract_limit(message) {
+                    if cli.verbose {
+                        eprintln!("Learning: Detected new token limit for {model_name}: {new_limit}");
+                    }
+                    info.max_output_tokens = Some(new_limit);
+                    updated = true;
+                }
+
+                if let Some(new_param) = try_extract_param_name(message) {
+                    if cli.verbose {
+                        eprintln!("Learning: Detected new token parameter name for {model_name}: {new_param}");
+                    }
+                    info.max_tokens_param = Some(new_param);
+                    updated = true;
+                }
+
+                if updated {
+                    cache.update_model(&provider_name, info);
+                    let _ = cache.save(&config_dir);
+                }
+            }
+            Err(e)
+        }
+    }
+}
+
+fn try_extract_limit(message: &str) -> Option<u32> {
+    // Case 1: Anthropic "64000 > 8192"
+    if let Some(caps) = regex::Regex::new(r"(\d+)\s*>\s*(\d+)").ok().and_then(|re| re.captures(message)) {
+        return caps.get(2).and_then(|m| m.as_str().parse().ok());
+    }
+
+    // Case 2: OpenAI or others "limit of 4096"
+    if let Some(caps) = regex::Regex::new(r"(?i)limit of (\d+)").ok().and_then(|re| re.captures(message)) {
+        return caps.get(1).and_then(|m| m.as_str().parse().ok());
+    }
+
+    // Case 3: "maximum allowed is 8192"
+    if let Some(caps) = regex::Regex::new(r"(?i)maximum(?: allowed)? (?:is )?(\d+)").ok().and_then(|re| re.captures(message)) {
+        return caps.get(1).and_then(|m| m.as_str().parse().ok());
+    }
+
+    None
+}
+
+fn try_extract_param_name(message: &str) -> Option<String> {
+    // Case: "Use 'max_completion_tokens' instead."
+    let re = regex::Regex::new(r"(?i)use\s+'([^']+)'\s+instead").ok()?;
+    re.captures(message)
+        .and_then(|cap| cap.get(1))
+        .map(|m| m.as_str().to_string())
 }
 
 /// Handles the --list-models command.
-/// Fetches models for all providers, displays an interactive list,
-/// and copies the selected model identifier to the clipboard.
 async fn list_models(cli: &Cli, config: &Config) -> Result<(), CrabError> {
     let config_dir = Config::config_dir();
     let mut cache = ModelCache::load(&config_dir);
@@ -247,7 +268,7 @@ async fn list_models(cli: &Cli, config: &Config) -> Result<(), CrabError> {
         match models {
             Ok(models) => {
                 for m in models {
-                    all_models.push(format!("{name}:{m}"));
+                    all_models.push(format!("{name}:{}", m.id));
                 }
             }
             Err(e) => {
@@ -278,7 +299,6 @@ async fn list_models(cli: &Cli, config: &Config) -> Result<(), CrabError> {
 
     if let Some(index) = selection {
         let selected_model: &String = &all_models[index];
-        // Use a clipboard crate to copy to clipboard
         use clipboard::{ClipboardContext, ClipboardProvider};
         let mut ctx: ClipboardContext = ClipboardProvider::new()?;
         ctx.set_contents(selected_model.to_string())?;
@@ -295,10 +315,10 @@ async fn get_models(
     ttl: u64,
     cache_enabled: bool,
     config: &Config,
-) -> Result<Vec<String>, CrabError> {
+) -> Result<Vec<types::ModelInfo>, CrabError> {
     if cache_enabled {
         if let Some(cached) = cache.get(provider_name, ttl) {
-            return Ok(cached.to_vec());
+            return Ok(cached);
         }
     }
 

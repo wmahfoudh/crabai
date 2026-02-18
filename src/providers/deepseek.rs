@@ -5,6 +5,8 @@ use super::openai_compat;
 use super::r#trait::Provider;
 use crate::error::CrabError;
 
+use crate::types::ModelInfo;
+
 /// DeepSeek chat API (OpenAI-compatible). Model listing falls back to a
 /// static list if no API key is set or if the models endpoint fails.
 pub struct DeepSeekProvider {
@@ -29,8 +31,17 @@ impl DeepSeekProvider {
             .ok_or_else(|| CrabError::MissingApiKey("deepseek".to_string()))
     }
 
-    fn static_models() -> Vec<String> {
-        vec!["deepseek-chat".to_string(), "deepseek-reasoner".to_string()]
+    fn static_models() -> Vec<ModelInfo> {
+        vec!["deepseek-chat", "deepseek-reasoner"]
+            .into_iter()
+            .map(|id| {
+                let mut info = ModelInfo::new(id);
+                if id == "deepseek-reasoner" {
+                    info.supports_temperature = false;
+                }
+                info
+            })
+            .collect()
     }
 }
 
@@ -40,8 +51,9 @@ impl Provider for DeepSeekProvider {
         &self,
         model: &str,
         prompt: &str,
-        temperature: f32,
+        temperature: Option<f32>,
         max_tokens: u32,
+        max_tokens_key: Option<String>,
     ) -> Result<String, CrabError> {
         openai_compat::send_chat_request(
             &self.client,
@@ -51,17 +63,25 @@ impl Provider for DeepSeekProvider {
             prompt,
             temperature,
             max_tokens,
+            max_tokens_key,
         )
         .await
     }
 
-    async fn list_models(&self) -> Result<Vec<String>, CrabError> {
+    async fn list_models(&self) -> Result<Vec<ModelInfo>, CrabError> {
         let api_key = match self.require_key() {
             Ok(k) => k,
             Err(_) => return Ok(Self::static_models()),
         };
         match openai_compat::list_models_api(&self.client, Self::BASE_URL, api_key).await {
-            Ok(models) => Ok(models),
+            Ok(mut models) => {
+                for m in &mut models {
+                    if m.id == "deepseek-reasoner" {
+                        m.supports_temperature = false;
+                    }
+                }
+                Ok(models)
+            }
             Err(_) => Ok(Self::static_models()),
         }
     }
@@ -70,12 +90,12 @@ impl Provider for DeepSeekProvider {
         "deepseek"
     }
 
-    fn get_max_tokens(&self, model: &str) -> Option<u32> {
-        match model {
-            // Sourced from DeepSeek's model documentation.
-            "deepseek-chat" => Some(8192),
-            "deepseek-coder" => Some(16384),
-            _ => None,
+    fn sanitize_params(&self, model: &str, temperature: f32, max_tokens: u32) -> (Option<f32>, u32) {
+        if model == "deepseek-reasoner" {
+            // DeepSeek Reasoner does not support temperature.
+            (None, max_tokens)
+        } else {
+            (Some(temperature), max_tokens)
         }
     }
 }

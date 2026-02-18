@@ -1,5 +1,27 @@
+use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::str::FromStr;
+
+/// Information about a model's capabilities and constraints.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ModelInfo {
+    pub id: String,
+    pub max_output_tokens: Option<u32>,
+    pub supports_temperature: bool,
+    /// Optional: The name of the parameter used for max tokens (e.g. "max_completion_tokens")
+    pub max_tokens_param: Option<String>,
+}
+
+impl ModelInfo {
+    pub fn new(id: &str) -> Self {
+        Self {
+            id: id.to_string(),
+            max_output_tokens: None,
+            supports_temperature: true,
+            max_tokens_param: None,
+        }
+    }
+}
 
 /// Enumeration of all supported LLM providers.
 /// Used for compile-time validation and case-insensitive string parsing.

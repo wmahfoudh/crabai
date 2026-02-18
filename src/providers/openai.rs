@@ -7,6 +7,8 @@ use super::r#trait::Provider;
 use crate::config::Config;
 use crate::error::CrabError;
 
+use crate::types::ModelInfo;
+
 pub struct OpenAIProvider {
     client: Client,
     api_key: Option<String>,
@@ -40,7 +42,7 @@ impl OpenAIProvider {
             .ok_or_else(|| CrabError::MissingApiKey("openai".to_string()))
     }
 
-    fn static_models() -> Vec<String> {
+    fn static_models() -> Vec<ModelInfo> {
         // A comprehensive fallback list of common models.
         vec![
             "gpt-4o",
@@ -54,7 +56,16 @@ impl OpenAIProvider {
             "gpt-3.5-turbo-16k",
         ]
         .into_iter()
-        .map(String::from)
+        .map(|id| {
+            let mut info = ModelInfo::new(id);
+            // Enrich with known limits
+            if id == "gpt-4o" || id == "gpt-4o-mini" {
+                info.max_output_tokens = Some(16384);
+            } else if id.contains("gpt-4") {
+                info.max_output_tokens = Some(4096);
+            }
+            info
+        })
         .collect()
     }
 }
@@ -87,8 +98,9 @@ impl Provider for OpenAIProvider {
         &self,
         model: &str,
         prompt: &str,
-        temperature: f32,
+        temperature: Option<f32>,
         max_tokens: u32,
+        max_tokens_key: Option<String>,
     ) -> Result<String, CrabError> {
         let mut request_body = serde_json::json!({
             "model": model,
@@ -98,18 +110,24 @@ impl Provider for OpenAIProvider {
                     content: prompt.to_string(),
                 }
             ],
-            "temperature": temperature,
         });
 
-        // Determine the correct parameter name based on the model.
-        let max_tokens_key = if model == "gpt-5" {
+        if let Some(t) = temperature {
+            request_body["temperature"] = serde_json::json!(t);
+        }
+
+        // Use the explicitly provided key name, or determine the correct one based on the model.
+        let key = if let Some(k) = max_tokens_key {
+            k
+        } else if model.starts_with("o1") || model.starts_with("o3") || model == "gpt-5" {
             "max_completion_tokens".to_string()
         } else {
             self.max_tokens_param.clone()
         };
 
-        // Add the max tokens parameter with the custom name.
-        request_body[max_tokens_key] = serde_json::json!(max_tokens);
+        // Add the max tokens parameter with the resolved name.
+        request_body[key] = serde_json::json!(max_tokens);
+
 
         let url = format!("{}/chat/completions", Self::BASE_URL);
         let resp = self
@@ -141,13 +159,22 @@ impl Provider for OpenAIProvider {
             })
     }
 
-    async fn list_models(&self) -> Result<Vec<String>, CrabError> {
+    async fn list_models(&self) -> Result<Vec<ModelInfo>, CrabError> {
         let api_key = match self.require_key() {
             Ok(k) => k,
             Err(_) => return Ok(Self::static_models()),
         };
         match openai_compat::list_models_api(&self.client, Self::BASE_URL, api_key).await {
-            Ok(models) => Ok(models),
+            Ok(mut models) => {
+                // Enrich discovered models with known capabilities
+                for m in &mut models {
+                    if m.id.starts_with("o1-") || m.id.starts_with("o3-") {
+                        m.supports_temperature = false;
+                        m.max_tokens_param = Some("max_completion_tokens".to_string());
+                    }
+                }
+                Ok(models)
+            }
             Err(_) => Ok(Self::static_models()),
         }
     }
@@ -156,19 +183,20 @@ impl Provider for OpenAIProvider {
         "openai"
     }
 
-    fn get_max_tokens(&self, model: &str) -> Option<u32> {
-        match model {
-            // Sourced from OpenAI's official documentation.
-            "gpt-4o" => Some(16384),
-            "gpt-4o-mini" => Some(16384),
-            "gpt-4-turbo" => Some(4096),
-            "gpt-4-turbo-preview" => Some(4096),
-            "gpt-4-vision-preview" => Some(4096),
-            "gpt-4-32k" => Some(8192), // The -32k model still has an 8k output limit.
-            "gpt-4" => Some(8192),
-            "gpt-3.5-turbo-16k" => Some(4096),
-            "gpt-3.5-turbo" => Some(4096),
-            _ => None,
+    fn sanitize_params(&self, model: &str, temperature: f32, max_tokens: u32) -> (Option<f32>, u32) {
+        let mut final_temp = Some(temperature);
+
+        // Reasoning models do not support temperature (it must be 1.0 or omitted).
+        // For simplicity and safety, we omit it.
+        if model.starts_with("o1") || model.starts_with("o3") {
+            final_temp = None;
+        } else if model == "gpt-5" {
+            // Placeholder for future models with specific constraints.
+            final_temp = Some(1.0);
+        } else if model.starts_with("gpt-") && temperature > 1.0 {
+            final_temp = Some(1.0);
         }
+
+        (final_temp, max_tokens)
     }
 }

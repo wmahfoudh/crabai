@@ -36,7 +36,7 @@ pub async fn run_interactive_config(config_path: Option<&str>) -> Result<(), Cra
     };
 
     // Provider and model selection loop
-    let (provider, selected_model) = loop {
+    let (_provider, selected_model) = loop {
         let provider_names = providers::list_provider_names();
         let default_provider_name = config
             .default_provider
@@ -58,7 +58,7 @@ pub async fn run_interactive_config(config_path: Option<&str>) -> Result<(), Cra
 
         println!("\nFetching models for {}...", selected_provider);
         let provider = get_provider_with_config(selected_provider, &config)?;
-        let mut models = match provider.list_models().await {
+        let models_info = match provider.list_models().await {
             Ok(models) => models,
             Err(e) => {
                 eprintln!("Warning: Could not fetch models: {e}");
@@ -66,12 +66,14 @@ pub async fn run_interactive_config(config_path: Option<&str>) -> Result<(), Cra
             }
         };
 
+        let mut model_ids: Vec<String> = models_info.iter().map(|m| m.id.clone()).collect();
+
         // Add a "Go Back" option
-        models.insert(0, "<-- Go Back".to_string());
+        model_ids.insert(0, "<-- Go Back".to_string());
 
         let model_idx = Select::with_theme(&theme)
             .with_prompt("Select default model")
-            .items(&models)
+            .items(&model_ids)
             .default(0)
             .interact()?;
 
@@ -81,9 +83,11 @@ pub async fn run_interactive_config(config_path: Option<&str>) -> Result<(), Cra
             continue;
         }
 
-        let selected_model = models[model_idx].clone();
-        config.default_model = Some(format!("{}:{}", selected_provider, selected_model));
-        break (provider, selected_model);
+        let selected_model_id = model_ids[model_idx].clone();
+        let selected_model_info = models_info.into_iter().find(|m| m.id == selected_model_id);
+
+        config.default_model = Some(format!("{}:{}", selected_provider, selected_model_id));
+        break (provider, selected_model_info);
     };
 
     // Temperature
@@ -100,11 +104,7 @@ pub async fn run_interactive_config(config_path: Option<&str>) -> Result<(), Cra
     config.temperature = Some(temperature.parse().unwrap_or(0.2));
 
     // Max tokens
-    let model_max_tokens = provider
-        .fetch_max_tokens(&selected_model)
-        .await
-        .ok()
-        .flatten();
+    let model_max_tokens = selected_model.as_ref().and_then(|m| m.max_output_tokens);
 
     let use_max_tokens = Confirm::with_theme(&theme)
         .with_prompt("Set max tokens limit? (choose No for provider default)")

@@ -10,11 +10,13 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::CrabError;
 
+use crate::types::ModelInfo;
+
 #[derive(Debug, Serialize, Deserialize)]
 struct CacheEntry {
     /// Unix timestamp (seconds) when this entry was written.
     timestamp: u64,
-    models: Vec<String>,
+    models: Vec<ModelInfo>,
 }
 
 /// Top-level cache structure. Serialized flat so the JSON keys are
@@ -33,13 +35,21 @@ impl ModelCache {
     /// Load from disk. Returns an empty cache on any read or parse failure.
     pub fn load(config_dir: &Path) -> Self {
         let path = Self::cache_path(config_dir);
-        if !path.exists() {
-            return Self::default();
+        if path.exists() {
+            if let Ok(s) = std::fs::read_to_string(&path) {
+                if let Ok(cache) = serde_json::from_str::<Self>(&s) {
+                    return cache;
+                }
+            }
         }
-        std::fs::read_to_string(&path)
-            .ok()
-            .and_then(|s| serde_json::from_str(&s).ok())
-            .unwrap_or_default()
+
+        // Fallback to embedded seed cache
+        Self::load_seed()
+    }
+
+    fn load_seed() -> Self {
+        let seed_json = include_str!("seed_model_cache.json");
+        serde_json::from_str(seed_json).unwrap_or_default()
     }
 
     pub fn save(&self, config_dir: &Path) -> Result<(), CrabError> {
@@ -51,18 +61,18 @@ impl ModelCache {
     }
 
     /// Return cached models if the entry exists and has not exceeded ttl_hours.
-    pub fn get(&self, provider: &str, ttl_hours: u64) -> Option<&[String]> {
+    pub fn get(&self, provider: &str, ttl_hours: u64) -> Option<Vec<ModelInfo>> {
         let entry = self.entries.get(provider)?;
         let now = now_unix();
         let age_hours = (now.saturating_sub(entry.timestamp)) / 3600;
         if age_hours < ttl_hours {
-            Some(&entry.models)
+            Some(entry.models.clone())
         } else {
             None
         }
     }
 
-    pub fn set(&mut self, provider: &str, models: Vec<String>) {
+    pub fn set(&mut self, provider: &str, models: Vec<ModelInfo>) {
         self.entries.insert(
             provider.to_string(),
             CacheEntry {
@@ -70,6 +80,20 @@ impl ModelCache {
                 models,
             },
         );
+    }
+
+    /// Update a single model's information in the cache without replacing the whole provider entry.
+    pub fn update_model(&mut self, provider: &str, info: ModelInfo) {
+        if let Some(entry) = self.entries.get_mut(provider) {
+            if let Some(existing) = entry.models.iter_mut().find(|m| m.id == info.id) {
+                *existing = info;
+            } else {
+                entry.models.push(info);
+            }
+        } else {
+            // If provider not in cache, create it
+            self.set(provider, vec![info]);
+        }
     }
 }
 

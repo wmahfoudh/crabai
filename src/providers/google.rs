@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use super::r#trait::Provider;
 use crate::error::CrabError;
+use crate::types::ModelInfo;
 
 /// Google Gemini API. Uses a custom request format (not OpenAI-compatible).
 /// Authentication is via query parameter, not Authorization header.
@@ -28,12 +29,15 @@ impl GoogleProvider {
             .ok_or_else(|| CrabError::MissingApiKey("google".to_string()))
     }
 
-    fn static_models() -> Vec<String> {
+    fn static_models() -> Vec<ModelInfo> {
         vec![
-            "gemini-1.5-pro-latest".to_string(),
-            "gemini-1.5-flash-latest".to_string(),
-            "gemini-pro".to_string(),
+            "gemini-1.5-pro-latest",
+            "gemini-1.5-flash-latest",
+            "gemini-pro",
         ]
+        .into_iter()
+        .map(ModelInfo::new)
+        .collect()
     }
 }
 
@@ -82,24 +86,15 @@ struct CandidatePart {
     text: String,
 }
 
-#[derive(Deserialize)]
-struct ModelsListResponse {
-    models: Vec<ModelEntry>,
-}
-
-#[derive(Deserialize)]
-struct ModelEntry {
-    name: String,
-}
-
 #[async_trait]
 impl Provider for GoogleProvider {
     async fn send(
         &self,
         model: &str,
         prompt: &str,
-        temperature: f32,
+        temperature: Option<f32>,
         max_tokens: u32,
+        _max_tokens_key: Option<String>,
     ) -> Result<String, CrabError> {
         let api_key = self.require_key()?;
         let url = format!(
@@ -117,7 +112,7 @@ impl Provider for GoogleProvider {
                 }],
             }],
             generation_config: Some(GenerationConfig {
-                temperature,
+                temperature: temperature.unwrap_or(0.2), // Default if None
                 max_output_tokens: max_tokens,
             }),
         };
@@ -145,7 +140,7 @@ impl Provider for GoogleProvider {
             })
     }
 
-    async fn list_models(&self) -> Result<Vec<String>, CrabError> {
+    async fn list_models(&self) -> Result<Vec<ModelInfo>, CrabError> {
         let api_key = match self.require_key() {
             Ok(k) => k,
             Err(_) => return Ok(Self::static_models()),
@@ -159,19 +154,31 @@ impl Provider for GoogleProvider {
             return Ok(Self::static_models());
         }
 
-        match resp.json::<ModelsListResponse>().await {
+        #[derive(Deserialize)]
+        struct ModelsList {
+            models: Vec<GoogleModelDetail>,
+        }
+
+        #[derive(Deserialize)]
+        struct GoogleModelDetail {
+            name: String,
+            #[serde(rename = "outputTokenLimit")]
+            output_token_limit: Option<u32>,
+        }
+
+        match resp.json::<ModelsList>().await {
             Ok(list) => {
-                let mut models: Vec<String> = list
+                let mut models: Vec<ModelInfo> = list
                     .models
                     .into_iter()
                     .map(|m| {
-                        m.name
-                            .strip_prefix("models/")
-                            .unwrap_or(&m.name)
-                            .to_string()
+                        let id = m.name.strip_prefix("models/").unwrap_or(&m.name).to_string();
+                        let mut info = ModelInfo::new(&id);
+                        info.max_output_tokens = m.output_token_limit;
+                        info
                     })
                     .collect();
-                models.sort();
+                models.sort_by(|a, b| a.id.cmp(&b.id));
                 Ok(models)
             }
             Err(_) => Ok(Self::static_models()),
@@ -180,28 +187,5 @@ impl Provider for GoogleProvider {
 
     fn name(&self) -> &str {
         "google"
-    }
-
-    async fn fetch_max_tokens(&self, model: &str) -> Result<Option<u32>, CrabError> {
-        let api_key = self.require_key()?;
-        let url = format!("{}/models/{}?key={}", Self::BASE_URL, model, api_key);
-
-        let resp = self.client.get(&url).send().await?;
-
-        if !resp.status().is_success() {
-            // This provider may not have model-specific details, so don't error.
-            return Ok(None);
-        }
-
-        #[derive(Deserialize)]
-        struct GoogleModelInfo {
-            #[serde(rename = "outputTokenLimit")]
-            output_token_limit: u32,
-        }
-
-        match resp.json::<GoogleModelInfo>().await {
-            Ok(info) => Ok(Some(info.output_token_limit)),
-            Err(_) => Ok(None),
-        }
     }
 }

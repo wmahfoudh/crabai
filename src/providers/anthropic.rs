@@ -5,6 +5,8 @@ use serde::{Deserialize, Serialize};
 use super::r#trait::Provider;
 use crate::error::CrabError;
 
+use crate::types::ModelInfo;
+
 /// Anthropic Messages API. Uses a custom request format (not OpenAI-compatible).
 /// Model listing returns a static fallback list; no API key required for that.
 pub struct AnthropicProvider {
@@ -31,18 +33,23 @@ impl AnthropicProvider {
             .ok_or_else(|| CrabError::MissingApiKey("anthropic".to_string()))
     }
 
-    fn static_models() -> Vec<String> {
+    fn static_models() -> Vec<ModelInfo> {
         vec![
-            "claude-sonnet-4-20250514".to_string(),
-            "claude-opus-4-20250514".to_string(),
-            "claude-3-5-sonnet-20241022".to_string(),
-            "claude-3-5-haiku-20241022".to_string(),
-            "claude-3-opus-20240229".to_string(),
+            "claude-sonnet-4-20250514",
+            "claude-opus-4-20250514",
+            "claude-3-5-sonnet-20241022",
+            "claude-3-5-haiku-20241022",
+            "claude-3-opus-20240229",
         ]
+        .into_iter()
+        .map(|id| {
+            ModelInfo::new(id)
+        })
+        .collect()
     }
 
     /// Fetch models from Anthropic's models API endpoint.
-    async fn list_models_api(&self) -> Result<Vec<String>, CrabError> {
+    async fn list_models_api(&self) -> Result<Vec<ModelInfo>, CrabError> {
         let api_key = self.require_key()?;
         let url = "https://api.anthropic.com/v1/models";
 
@@ -72,7 +79,13 @@ impl AnthropicProvider {
         }
 
         let response: ModelsResponse = resp.json().await?;
-        let models: Vec<String> = response.data.into_iter().map(|m| m.id).collect();
+        let models: Vec<ModelInfo> = response
+            .data
+            .into_iter()
+            .map(|m| {
+                ModelInfo::new(&m.id)
+            })
+            .collect();
 
         Ok(models)
     }
@@ -109,8 +122,9 @@ impl Provider for AnthropicProvider {
         &self,
         model: &str,
         prompt: &str,
-        temperature: f32,
+        temperature: Option<f32>,
         max_tokens: u32,
+        _max_tokens_key: Option<String>,
     ) -> Result<String, CrabError> {
         let request = AnthropicRequest {
             model: model.to_string(),
@@ -119,7 +133,7 @@ impl Provider for AnthropicProvider {
                 content: prompt.to_string(),
             }],
             max_tokens,
-            temperature: Some(temperature),
+            temperature,
         };
 
         let api_key = self.require_key()?;
@@ -155,7 +169,7 @@ impl Provider for AnthropicProvider {
             })
     }
 
-    async fn list_models(&self) -> Result<Vec<String>, CrabError> {
+    async fn list_models(&self) -> Result<Vec<ModelInfo>, CrabError> {
         // Try to fetch from API first, fall back to static list on failure
         match self.list_models_api().await {
             Ok(models) => Ok(models),
@@ -167,20 +181,7 @@ impl Provider for AnthropicProvider {
         "anthropic"
     }
 
-    fn get_max_tokens(&self, model: &str) -> Option<u32> {
-        // Newer Haiku models support a much larger output, according to API error messages.
-        if model.contains("haiku") {
-            Some(64000)
-        }
-        // Other Claude 3 models have a documented limit of 8192.
-        else if model.contains("claude-3") || model.contains("claude-3.5") {
-            Some(8192)
-        }
-        // Provide a safe fallback for any other claude models.
-        else if model.starts_with("claude-") {
-            Some(8192)
-        } else {
-            None
-        }
+    fn sanitize_params(&self, _model: &str, temperature: f32, max_tokens: u32) -> (Option<f32>, u32) {
+        (Some(temperature), max_tokens)
     }
 }
