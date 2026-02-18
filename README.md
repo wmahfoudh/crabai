@@ -29,11 +29,11 @@ CrabAI is terminal tool for quick, composable AI tasks.
 ## Features
 
 - **8 LLM providers**: OpenAI, Anthropic, Google, OpenRouter, Groq, Together, Mistral, DeepSeek
-- **Unified Model Selection**: Use any model from any provider with a single `-m provider:model` flag.
-- **Dynamic Model Discovery**: Fetches latest models from provider APIs with local caching.
-- **Interactive Model Lister**: A fuzzy-searchable, interactive list of all available models that copies your selection to the clipboard.
-- **Markdown Prompts**: Template system with sample prompts included.
-- **Universal Argument & Pipeline Support**: Construct prompts from arguments, files, and piped `STDIN` for maximum flexibility.
+- **Unified Model Selection**: Single `-m provider:model` flag. Automatically handles specific constraints for reasoning models (e.g., OpenAI `o1`/`o3`, `deepseek-reasoner`).
+- **Self-Healing Capability Cache**: Learns model limits and parameter names dynamically from provider API metadata and error messages.
+- **Interactive Model Lister**: Fuzzy-searchable list of all available models that copies your selection to the clipboard.
+- **Markdown Prompts**: Template system with sample prompts included and auto-installed.
+- **Universal Argument & Pipeline Support**: Construct prompts from arguments, files, and piped `STDIN`.
 - **Interactive Configuration**: Step-by-step setup wizard with auto-configuration on first run.
 
 
@@ -96,7 +96,7 @@ model_cache_ttl_hours = 24
 [advanced.api_key_vars]
 openai = "OPENAI_API_KEY"
 anthropic = "ANTHROPIC_API_KEY"
-google = "GOOGLE_API_KEY"
+google = "GEMINI_API_KEY"
 openrouter = "OPENROUTER_API_KEY"
 groq = "GROQ_API_KEY"
 together = "TOGETHER_API_KEY"
@@ -147,7 +147,7 @@ This provides a powerful and flexible way to compose prompts.
 |-------------------|-------|----------------------------------------------|
 | `--model` | `-m` | Set model, in `provider:model` format (e.g., `anthropic:claude-3-opus`) |
 | `--temperature` | `-t` | Set sampling temperature |
-| `--max-tokens` | `-T` | Set max tokens |
+| `--max-tokens` | `-T` | Set max tokens (use `max` for model limit) |
 | `--use-config` | `-u` | Path to custom config file |
 | `--config` | `-c` | Launch the interactive config wizard |
 | `--list-prompts` | `-L` | List available prompt templates |
@@ -190,9 +190,13 @@ cat document.txt | crabai summarize
 ```
 
 
-## Model Discovery
+## Model Capabilities & Discovery
 
-CrabAI fetches model lists dynamically from provider APIs with graceful fallback to static lists if API is unavailable. Model lists are cached locally (default 24hrs) at `~/.config/crabai/model_cache.json`.
+CrabAI fetches model lists and capabilities (token limits, parameter support) dynamically from provider APIs. 
+
+**Self-Healing Logic:** If an API request fails due to a limit mismatch or unsupported parameter, CrabAI parses the error message, "learns" the correct constraint, and automatically updates the local cache.
+
+**Caching:** Model info is cached at `~/.config/crabai/model_cache.json`. A bundled seed cache provides immediate support for ~100 common models on first run.
 
 
 ## How It Works

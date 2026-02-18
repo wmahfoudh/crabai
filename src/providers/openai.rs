@@ -166,7 +166,7 @@ impl Provider for OpenAIProvider {
         };
         match openai_compat::list_models_api(&self.client, Self::BASE_URL, api_key).await {
             Ok(mut models) => {
-                // Enrich discovered models with known capabilities
+                // Apply known overrides for specific model families.
                 for m in &mut models {
                     if m.id.starts_with("o1-") || m.id.starts_with("o3-") {
                         m.supports_temperature = false;
@@ -186,12 +186,11 @@ impl Provider for OpenAIProvider {
     fn sanitize_params(&self, model: &str, temperature: f32, max_tokens: u32) -> (Option<f32>, u32) {
         let mut final_temp = Some(temperature);
 
-        // Reasoning models do not support temperature (it must be 1.0 or omitted).
-        // For simplicity and safety, we omit it.
+        // Omit temperature for reasoning models (o1/o3) as it is unsupported or restricted.
         if model.starts_with("o1") || model.starts_with("o3") {
             final_temp = None;
         } else if model == "gpt-5" {
-            // Placeholder for future models with specific constraints.
+            // Force temperature to 1.0 for gpt-5.
             final_temp = Some(1.0);
         } else if model.starts_with("gpt-") && temperature > 1.0 {
             final_temp = Some(1.0);

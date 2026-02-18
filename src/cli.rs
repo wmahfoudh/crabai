@@ -20,12 +20,12 @@ pub struct Cli {
     pub model: Option<String>,
 
     /// Sampling temperature (0.0 to 2.0).
-    /// Overrides the temperature from config.
+    /// Defaults to 0.2 unless overridden in config.
     #[arg(short = 't', long = "temperature")]
     pub temperature: Option<f32>,
 
     /// Maximum tokens in the model's response.
-    /// Overrides the max_tokens from config.
+    /// Can be a number or "max" to use the model's limit.
     #[arg(short = 'T', long = "max-tokens")]
     pub max_tokens: Option<String>,
 

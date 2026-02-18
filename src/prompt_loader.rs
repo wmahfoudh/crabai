@@ -33,7 +33,7 @@ pub fn list_prompts(prompts_dir: &Path) -> Result<Vec<String>, CrabError> {
 }
 
 /// Combine prompt template, additional arguments, and optional STDIN content.
-/// All parts are joined with a consistent separator.
+/// Parts are joined with double newlines to separate instructions from data.
 pub fn assemble(prompt: &str, args: &[String], stdin: Option<&str>) -> String {
     let mut final_prompt = String::from(prompt);
 

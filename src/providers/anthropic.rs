@@ -43,7 +43,10 @@ impl AnthropicProvider {
         ]
         .into_iter()
         .map(|id| {
-            ModelInfo::new(id)
+            let mut info = ModelInfo::new(id);
+            // Claude 3 models generally support an 8192 token output limit.
+            info.max_output_tokens = Some(8192);
+            info
         })
         .collect()
     }

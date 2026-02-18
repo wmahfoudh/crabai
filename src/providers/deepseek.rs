@@ -92,7 +92,7 @@ impl Provider for DeepSeekProvider {
 
     fn sanitize_params(&self, model: &str, temperature: f32, max_tokens: u32) -> (Option<f32>, u32) {
         if model == "deepseek-reasoner" {
-            // DeepSeek Reasoner does not support temperature.
+            // Omit temperature for deepseek-reasoner.
             (None, max_tokens)
         } else {
             (Some(temperature), max_tokens)

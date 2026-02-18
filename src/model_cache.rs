@@ -43,7 +43,7 @@ impl ModelCache {
             }
         }
 
-        // Fallback to embedded seed cache
+        // Use bundled seed cache if no local cache exists or is invalid.
         Self::load_seed()
     }
 

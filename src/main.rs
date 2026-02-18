@@ -130,7 +130,7 @@ async fn run(cli: Cli) -> Result<(), CrabError> {
     let ttl = config.cache_ttl_hours();
     let cache_enabled = config.model_cache_enabled();
 
-    // Try to get model info from cache to resolve "max" tokens and other constraints
+    // Resolve model capabilities from cache to determine token limits and parameter support.
     let model_info = if cache_enabled {
         get_models(&provider_name, &mut cache, ttl, true, &config)
             .await
@@ -197,7 +197,7 @@ async fn run(cli: Cli) -> Result<(), CrabError> {
             Ok(())
         }
         Err(e) => {
-            // Attempt to learn from error message
+            // Extract model constraints from provider error messages to update local cache.
             if let CrabError::ProviderError { message, .. } = &e {
                 let mut updated = false;
                 let mut info = model_info.unwrap_or_else(|| types::ModelInfo::new(&model_name));

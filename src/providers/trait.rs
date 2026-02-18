@@ -37,7 +37,7 @@ pub trait Provider: Send + Sync {
 
     /// Sanitizes parameters based on model-specific constraints.
     /// Returns (final_temperature, final_max_tokens).
-    /// If temperature is None, it should be omitted from the provider's API request.
+    /// Returning None for temperature signals the provider to omit the parameter from the request.
     fn sanitize_params(&self, _model: &str, temperature: f32, max_tokens: u32) -> (Option<f32>, u32) {
         (Some(temperature), max_tokens)
     }
