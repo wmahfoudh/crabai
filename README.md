@@ -15,12 +15,10 @@ CrabAI is inspired by Fabric's core idea but takes a minimalist approach. It's d
 - STDIN to model to STDOUT, designed for Unix pipelines
 - Zero hidden state between invocations
 - Configuration via simple TOML file with CLI overrides
-- Deterministic execution—same input produces same request
 - 8 LLM providers with isolated, maintainable implementations
 
 **What CrabAI is NOT:**
 - Not an agent framework
-- Not a workflow engine
 - Not a chat UI
 - Not a stateful assistant
 
@@ -30,9 +28,9 @@ CrabAI is terminal tool for quick, composable AI tasks.
 
 - **8 LLM providers**: OpenAI, Anthropic, Google, OpenRouter, Groq, Together, Mistral, DeepSeek
 - **Unified Model Selection**: Single `-m provider:model` flag. Automatically handles specific constraints for reasoning models (e.g., OpenAI `o1`/`o3`, `deepseek-reasoner`).
-- **Self-Healing Capability Cache**: Learns model limits and parameter names dynamically from provider API metadata and error messages.
+- **Self-Healing Capability Cache**: Tries to learn model limits and parameter names dynamically from provider API metadata and error messages.
 - **Interactive Model Lister**: Fuzzy-searchable list of all available models that copies your selection to the clipboard.
-- **Markdown Prompts**: Template system with sample prompts included and auto-installed.
+- **Markdown Prompts**: Template system with reusable sample prompts just like [Fabric](https://github.com/danielmiessler/fabric).
 - **Universal Argument & Pipeline Support**: Construct prompts from arguments, files, and piped `STDIN`.
 - **Interactive Configuration**: Step-by-step setup wizard with auto-configuration on first run.
 
@@ -49,7 +47,7 @@ CrabAI is terminal tool for quick, composable AI tasks.
 | Mistral | `MISTRAL_API_KEY` |
 | DeepSeek | `DEEPSEEK_API_KEY` |
 
-All environment variable names are customizable via the config file. This is useful when other tools have a different name and you want to avoid conflicts.
+All environment variable names are customizable via the config file. This is useful when other tools impose a different name and you want to avoid conflicts.
 
 ## Installation
 
