@@ -45,31 +45,48 @@ pub fn get_provider_with_config(
         .parse()
         .map_err(|e: String| CrabError::ConfigError(e))?;
 
-    let api_key_var = config.api_key_var(name);
-
     match provider_name {
-        ProviderName::OpenAI => Ok(Box::new(openai::OpenAIProvider::new_with_env(
-            &api_key_var,
-        )?)),
-        ProviderName::Anthropic => Ok(Box::new(anthropic::AnthropicProvider::new_with_env(
-            &api_key_var,
-        )?)),
-        ProviderName::Google => Ok(Box::new(google::GoogleProvider::new_with_env(
-            &api_key_var,
-        )?)),
-        ProviderName::OpenRouter => Ok(Box::new(openrouter::OpenRouterProvider::new_with_env(
-            &api_key_var,
-        )?)),
-        ProviderName::Groq => Ok(Box::new(groq::GroqProvider::new_with_env(&api_key_var)?)),
-        ProviderName::Together => Ok(Box::new(together::TogetherProvider::new_with_env(
-            &api_key_var,
-        )?)),
-        ProviderName::Mistral => Ok(Box::new(mistral::MistralProvider::new_with_env(
-            &api_key_var,
-        )?)),
-        ProviderName::DeepSeek => Ok(Box::new(deepseek::DeepSeekProvider::new_with_env(
-            &api_key_var,
-        )?)),
+        ProviderName::OpenAI => Ok(Box::new(openai::OpenAIProvider::new(config)?)),
+        ProviderName::Anthropic => {
+            let api_key_var = config.api_key_var(name);
+            Ok(Box::new(anthropic::AnthropicProvider::new_with_env(
+                &api_key_var,
+            )?))
+        }
+        ProviderName::Google => {
+            let api_key_var = config.api_key_var(name);
+            Ok(Box::new(google::GoogleProvider::new_with_env(
+                &api_key_var,
+            )?))
+        }
+        ProviderName::OpenRouter => {
+            let api_key_var = config.api_key_var(name);
+            Ok(Box::new(openrouter::OpenRouterProvider::new_with_env(
+                &api_key_var,
+            )?))
+        }
+        ProviderName::Groq => {
+            let api_key_var = config.api_key_var(name);
+            Ok(Box::new(groq::GroqProvider::new_with_env(&api_key_var)?))
+        }
+        ProviderName::Together => {
+            let api_key_var = config.api_key_var(name);
+            Ok(Box::new(together::TogetherProvider::new_with_env(
+                &api_key_var,
+            )?))
+        }
+        ProviderName::Mistral => {
+            let api_key_var = config.api_key_var(name);
+            Ok(Box::new(mistral::MistralProvider::new_with_env(
+                &api_key_var,
+            )?))
+        }
+        ProviderName::DeepSeek => {
+            let api_key_var = config.api_key_var(name);
+            Ok(Box::new(deepseek::DeepSeekProvider::new_with_env(
+                &api_key_var,
+            )?))
+        }
     }
 }
 

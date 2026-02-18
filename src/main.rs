@@ -156,9 +156,22 @@ async fn run(cli: Cli) -> Result<(), CrabError> {
     let temperature = cli
         .temperature
         .unwrap_or_else(|| config.resolve_temperature());
-    let max_tokens = cli
-        .max_tokens
-        .unwrap_or_else(|| config.resolve_max_tokens());
+    let max_tokens = match cli.max_tokens {
+        Some(s) => {
+            if s.to_lowercase() == "max" {
+                provider
+                    .fetch_max_tokens(&model_name)
+                    .await
+                    .ok()
+                    .flatten()
+                    .unwrap_or(4096)
+            } else {
+                s.parse::<u32>()
+                    .unwrap_or_else(|_| config.resolve_max_tokens())
+            }
+        }
+        None => config.resolve_max_tokens(),
+    };
 
     if cli.verbose {
         eprintln!("Provider: {}", provider.name());
@@ -167,8 +180,50 @@ async fn run(cli: Cli) -> Result<(), CrabError> {
         eprintln!("Max tokens: {max_tokens}");
     }
 
+    // Clamp max_tokens to the model's actual limit to prevent API errors.
+    let mut final_max_tokens = max_tokens;
+    if let Some(model_max) = provider.fetch_max_tokens(&model_name).await.ok().flatten() {
+        if final_max_tokens > model_max {
+            if cli.verbose {
+                eprintln!(
+                    "Warning: max_tokens ({}) exceeds model's limit ({}), clamping to {}.",
+                    final_max_tokens, model_max, model_max
+                );
+            }
+            final_max_tokens = model_max;
+        }
+    }
+
+    // Clamp temperature to the model's valid range.
+    let mut final_temperature = temperature;
+    if model_name == "gpt-5" {
+        if final_temperature != 1.0 {
+            if cli.verbose {
+                eprintln!(
+                    "Warning: temperature ({}) is not supported by gpt-5. Forcing to the only supported value: 1.0.",
+                    final_temperature
+                );
+            }
+            final_temperature = 1.0;
+        }
+    } else if model_name.starts_with("gpt-") && final_temperature > 1.0 {
+        // Handle other gpt models that might have a 1.0 limit.
+        if cli.verbose {
+            eprintln!(
+                "Warning: temperature ({}) exceeds this model's likely limit (1.0), clamping to 1.0.",
+                final_temperature
+            );
+        }
+        final_temperature = 1.0;
+    }
+
     let response = provider
-        .send(&model_name, &final_prompt, temperature, max_tokens)
+        .send(
+            &model_name,
+            &final_prompt,
+            final_temperature,
+            final_max_tokens,
+        )
         .await?;
 
     // Raw output only; no trailing newline beyond what the model returns.

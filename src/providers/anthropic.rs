@@ -2,8 +2,8 @@ use async_trait::async_trait;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 
-use crate::error::CrabError;
 use super::r#trait::Provider;
+use crate::error::CrabError;
 
 /// Anthropic Messages API. Uses a custom request format (not OpenAI-compatible).
 /// Model listing returns a static fallback list; no API key required for that.
@@ -73,7 +73,7 @@ impl AnthropicProvider {
 
         let response: ModelsResponse = resp.json().await?;
         let models: Vec<String> = response.data.into_iter().map(|m| m.id).collect();
-        
+
         Ok(models)
     }
 }
@@ -165,5 +165,22 @@ impl Provider for AnthropicProvider {
 
     fn name(&self) -> &str {
         "anthropic"
+    }
+
+    fn get_max_tokens(&self, model: &str) -> Option<u32> {
+        // Newer Haiku models support a much larger output, according to API error messages.
+        if model.contains("haiku") {
+            Some(64000)
+        }
+        // Other Claude 3 models have a documented limit of 8192.
+        else if model.contains("claude-3") || model.contains("claude-3.5") {
+            Some(8192)
+        }
+        // Provide a safe fallback for any other claude models.
+        else if model.starts_with("claude-") {
+            Some(8192)
+        } else {
+            None
+        }
     }
 }

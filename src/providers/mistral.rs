@@ -1,9 +1,9 @@
 use async_trait::async_trait;
 use reqwest::Client;
 
-use crate::error::CrabError;
 use super::openai_compat;
 use super::r#trait::Provider;
+use crate::error::CrabError;
 
 /// Mistral AI inference API. OpenAI-compatible.
 pub struct MistralProvider {
@@ -72,5 +72,16 @@ impl Provider for MistralProvider {
 
     fn name(&self) -> &str {
         "mistral"
+    }
+
+    fn get_max_tokens(&self, model: &str) -> Option<u32> {
+        match model {
+            // Mistral models often have large context windows, and the max output
+            // is not explicitly limited to a smaller value.
+            "mistral-large-latest" => Some(32768),
+            "open-mixtral-8x7b" => Some(32768),
+            "open-mistral-7b" => Some(32768),
+            _ => Some(8192), // A sensible default for other Mistral models
+        }
     }
 }

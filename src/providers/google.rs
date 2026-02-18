@@ -181,4 +181,27 @@ impl Provider for GoogleProvider {
     fn name(&self) -> &str {
         "google"
     }
+
+    async fn fetch_max_tokens(&self, model: &str) -> Result<Option<u32>, CrabError> {
+        let api_key = self.require_key()?;
+        let url = format!("{}/models/{}?key={}", Self::BASE_URL, model, api_key);
+
+        let resp = self.client.get(&url).send().await?;
+
+        if !resp.status().is_success() {
+            // This provider may not have model-specific details, so don't error.
+            return Ok(None);
+        }
+
+        #[derive(Deserialize)]
+        struct GoogleModelInfo {
+            #[serde(rename = "outputTokenLimit")]
+            output_token_limit: u32,
+        }
+
+        match resp.json::<GoogleModelInfo>().await {
+            Ok(info) => Ok(Some(info.output_token_limit)),
+            Err(_) => Ok(None),
+        }
+    }
 }

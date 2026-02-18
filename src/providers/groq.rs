@@ -1,9 +1,9 @@
 use async_trait::async_trait;
 use reqwest::Client;
 
-use crate::error::CrabError;
 use super::openai_compat;
 use super::r#trait::Provider;
+use crate::error::CrabError;
 
 /// Groq inference API. OpenAI-compatible.
 pub struct GroqProvider {
@@ -72,5 +72,18 @@ impl Provider for GroqProvider {
 
     fn name(&self) -> &str {
         "groq"
+    }
+
+    fn get_max_tokens(&self, model: &str) -> Option<u32> {
+        match model {
+            // Sourced from Groq's model documentation.
+            "llama-3.3-70b-versatile" => Some(32768),
+            "llama-3.1-70b-versatile" => Some(131072),
+            "llama-3.1-8b-instant" => Some(131072),
+            "mixtral-8x7b-32768" => Some(32768),
+            "gemma2-9b-it" => Some(65536),
+            "gemma-7b-it" => Some(8192),
+            _ => None,
+        }
     }
 }

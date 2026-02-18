@@ -3,7 +3,11 @@ use clap::Parser;
 /// Command-line interface definition for CrabAI.
 /// Parsed by clap from command-line arguments.
 #[derive(Parser, Debug)]
-#[command(name = "crabai", version, about = "Minimal Unix-native multi-provider LLM CLI")]
+#[command(
+    name = "crabai",
+    version,
+    about = "Minimal Unix-native multi-provider LLM CLI"
+)]
 pub struct Cli {
     /// All remaining arguments after the options.
     /// The first argument might be a prompt name.
@@ -23,7 +27,7 @@ pub struct Cli {
     /// Maximum tokens in the model's response.
     /// Overrides the max_tokens from config.
     #[arg(short = 'T', long = "max-tokens")]
-    pub max_tokens: Option<u32>,
+    pub max_tokens: Option<String>,
 
     /// Path to a custom config file.
     /// If not specified, uses ~/.config/crabai/config.toml.

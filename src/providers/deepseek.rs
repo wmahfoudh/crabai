@@ -1,9 +1,9 @@
 use async_trait::async_trait;
 use reqwest::Client;
 
-use crate::error::CrabError;
 use super::openai_compat;
 use super::r#trait::Provider;
+use crate::error::CrabError;
 
 /// DeepSeek chat API (OpenAI-compatible). Model listing falls back to a
 /// static list if no API key is set or if the models endpoint fails.
@@ -30,10 +30,7 @@ impl DeepSeekProvider {
     }
 
     fn static_models() -> Vec<String> {
-        vec![
-            "deepseek-chat".to_string(),
-            "deepseek-reasoner".to_string(),
-        ]
+        vec!["deepseek-chat".to_string(), "deepseek-reasoner".to_string()]
     }
 }
 
@@ -71,5 +68,14 @@ impl Provider for DeepSeekProvider {
 
     fn name(&self) -> &str {
         "deepseek"
+    }
+
+    fn get_max_tokens(&self, model: &str) -> Option<u32> {
+        match model {
+            // Sourced from DeepSeek's model documentation.
+            "deepseek-chat" => Some(8192),
+            "deepseek-coder" => Some(16384),
+            _ => None,
+        }
     }
 }

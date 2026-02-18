@@ -33,6 +33,18 @@ pub struct AdvancedConfig {
     /// If a provider is not listed here, the default environment variable name
     /// for that provider is used (e.g., "OPENAI_API_KEY" for OpenAI).
     pub api_key_vars: Option<HashMap<String, String>>,
+
+    /// Provider-specific advanced settings for OpenAI.
+    pub openai: Option<OpenAIAdvancedConfig>,
+}
+
+/// Advanced settings specific to the OpenAI provider.
+#[derive(Debug, Deserialize, Serialize, Default, Clone)]
+pub struct OpenAIAdvancedConfig {
+    /// The parameter name to use for max_tokens in OpenAI API requests.
+    /// Defaults to "max_tokens". Can be set to "max_completion_tokens"
+    /// for compatibility with certain proxy or non-standard model providers.
+    pub max_tokens_param: Option<String>,
 }
 
 impl Config {

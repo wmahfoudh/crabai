@@ -1,9 +1,9 @@
 use async_trait::async_trait;
 use reqwest::Client;
 
-use crate::error::CrabError;
 use super::openai_compat;
 use super::r#trait::Provider;
+use crate::error::CrabError;
 
 /// Together AI inference API. OpenAI-compatible.
 pub struct TogetherProvider {
@@ -72,5 +72,17 @@ impl Provider for TogetherProvider {
 
     fn name(&self) -> &str {
         "together"
+    }
+
+    fn get_max_tokens(&self, model: &str) -> Option<u32> {
+        match model {
+            // Sourced from Together AI's model documentation. Using context window
+            // size as the max output is not explicitly limited to a smaller value.
+            "meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo" => Some(131072),
+            "meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo" => Some(131072),
+            "mistralai/Mixtral-8x7B-Instruct-v0.1" => Some(32768),
+            "Qwen/Qwen2.5-72B-Instruct-Turbo" => Some(65536),
+            _ => None,
+        }
     }
 }

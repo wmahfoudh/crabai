@@ -36,7 +36,7 @@ pub async fn run_interactive_config(config_path: Option<&str>) -> Result<(), Cra
     };
 
     // Provider and model selection loop
-    loop {
+    let (provider, selected_model) = loop {
         let provider_names = providers::list_provider_names();
         let default_provider_name = config
             .default_provider
@@ -83,8 +83,8 @@ pub async fn run_interactive_config(config_path: Option<&str>) -> Result<(), Cra
 
         let selected_model = models[model_idx].clone();
         config.default_model = Some(format!("{}:{}", selected_provider, selected_model));
-        break;
-    }
+        break (provider, selected_model);
+    };
 
     // Temperature
     let temp_str = config
@@ -100,23 +100,37 @@ pub async fn run_interactive_config(config_path: Option<&str>) -> Result<(), Cra
     config.temperature = Some(temperature.parse().unwrap_or(0.2));
 
     // Max tokens
+    let model_max_tokens = provider
+        .fetch_max_tokens(&selected_model)
+        .await
+        .ok()
+        .flatten();
+
     let use_max_tokens = Confirm::with_theme(&theme)
         .with_prompt("Set max tokens limit? (choose No for provider default)")
         .default(config.max_tokens.is_some())
         .interact()?;
 
     if use_max_tokens {
-        let max_tokens_str = config
+        let (prompt, default_val) = match model_max_tokens {
+            Some(max) => (format!("Max tokens (up to {})", max), max),
+            None => ("Max tokens".to_string(), 4096),
+        };
+
+        // Determine the default value to show in the prompt.
+        // Use the configured value if it's valid for the current model,
+        // otherwise, use the model's maximum as the default to avoid confusion.
+        let default_prompt_val = config
             .max_tokens
-            .map(|t| t.to_string())
-            .unwrap_or_else(|| "4096".to_string());
+            .filter(|&cfg_max| model_max_tokens.map_or(true, |model_max| cfg_max <= model_max))
+            .unwrap_or(default_val);
 
         let max_tokens: String = Input::with_theme(&theme)
-            .with_prompt("Max tokens")
-            .default(max_tokens_str)
+            .with_prompt(prompt)
+            .default(default_prompt_val.to_string())
             .interact_text()?;
 
-        config.max_tokens = Some(max_tokens.parse().unwrap_or(4096));
+        config.max_tokens = Some(max_tokens.parse().unwrap_or(default_val));
     } else {
         config.max_tokens = None;
     }
@@ -187,6 +201,25 @@ pub async fn run_interactive_config(config_path: Option<&str>) -> Result<(), Cra
                 .interact_text()?;
 
             api_key_vars.insert(provider_name.to_string(), var_name);
+
+            // Provider-specific advanced settings
+            if provider_name == "openai" {
+                let current_param = advanced
+                    .clone()
+                    .openai
+                    .and_then(|o| o.max_tokens_param)
+                    .unwrap_or_else(|| "max_tokens".to_string());
+
+                let param_name: String = Input::with_theme(&theme)
+                    .with_prompt("OpenAI max_tokens parameter name")
+                    .default(current_param)
+                    .interact_text()?;
+
+                // Ensure advanced.openai exists
+                let mut openai_config = advanced.openai.clone().unwrap_or_default();
+                openai_config.max_tokens_param = Some(param_name);
+                advanced.openai = Some(openai_config);
+            }
         } else {
             // Not configuring: ensure default is in the map if not already present
             if !api_key_vars.contains_key(provider_name) {
