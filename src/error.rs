@@ -49,6 +49,12 @@ pub enum CrabError {
     Dialoguer(#[from] dialoguer::Error),
 }
 
+impl From<arboard::Error> for CrabError {
+    fn from(e: arboard::Error) -> Self {
+        CrabError::ClipboardError(e.to_string())
+    }
+}
+
 impl From<Box<dyn std::error::Error>> for CrabError {
     fn from(e: Box<dyn std::error::Error>) -> Self {
         CrabError::ClipboardError(e.to_string())

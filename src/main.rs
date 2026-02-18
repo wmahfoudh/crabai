@@ -299,9 +299,8 @@ async fn list_models(cli: &Cli, config: &Config) -> Result<(), CrabError> {
 
     if let Some(index) = selection {
         let selected_model: &String = &all_models[index];
-        use clipboard::{ClipboardContext, ClipboardProvider};
-        let mut ctx: ClipboardContext = ClipboardProvider::new()?;
-        ctx.set_contents(selected_model.to_string())?;
+        let mut cb = arboard::Clipboard::new()?;
+        cb.set_text(selected_model.to_string())?;
         eprintln!("Copied '{selected_model}' to clipboard.");
     }
 
