@@ -1,9 +1,10 @@
 [package]
 name = "crabai"
-version = "0.1.2"
+version = "0.1.3"
+authors = ["Walid Mahfoudh"]
 edition = "2021"
 license = "Apache-2.0"
-description = "Minimal Unix-native multi-provider LLM CLI"
+description = "Minimal multi-provider CLI for LLMs"
 
 [dependencies]
 tokio = { version = "1", features = ["full"] }
