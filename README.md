@@ -4,25 +4,23 @@ Minimal multi-provider LLM CLI. Single static binary. STDIN in, model output out
 
 ## Context & Philosophy
 
-I'm a big fan of [Fabric](https://github.com/danielmiessler/fabric) by Daniel Miessler, and I've had the privilege of contributing to the project. Fabric pioneered the concept of using AI with structured prompts for everyday tasks. However, as Fabric grew, it became increasingly complex, a "monster" 🙂 in both good and bad ways.
+I'm a big fan of [Fabric](https://github.com/danielmiessler/fabric) by Daniel Miessler, and I've had the privilege of contributing to the project. Fabric pioneered the concept of using AI from the terminal for everyday tasks. However, as Fabric grew, it became increasingly complex, in both good and bad ways.
 
-CrabAI is inspired by Fabric's core idea but takes a minimalist approach. It's designed to be an small, self-contained binary that does one thing well: send a prompt to an LLM and return the response.
+CrabAI is inspired by Fabric's core idea but takes a minimalist approach. It's designed to be a small, self-contained binary that does one thing well: send a prompt to an LLM and return the response.
 
-*Please note that CrabAI was developed for personal use, and while I’ve done my best to ensure its reliability, bugs may still occur. If you encounter any issues, feel free to open an issue, I’ll do my best to address them when time permits.*
+*CrabAI was developed to address my specific needs, and while it looks for me reliable, bugs may still occur. So If you notice a problem, please open an issue, I’ll do my best to address it when time permits.*
 
 **Design principles:**
-- One static Rust binary, no Python or Node.js dependencies
+- One static Rust binary, no dependencies
 - STDIN to model to STDOUT, designed for Unix pipelines
-- Zero hidden state between invocations
 - Configuration via simple TOML file with CLI overrides
 - 8 LLM providers with isolated, maintainable implementations
 
 **What CrabAI is NOT:**
 - Not an agent framework
-- Not a chat UI
-- Not a stateful assistant
+- Not a stateful chat UI (you can't use it to run conversations with LLMs)
 
-CrabAI is terminal tool for quick, composable AI tasks.
+CrabAI is terminal tool for quick, composable AI tasks or for running structured prompts with predictable outputs. This can be useful in a production environment (in a cloud function for example)
 
 ## Features
 
@@ -74,7 +72,7 @@ The wizard guides you through:
 - Model cache settings
 - Custom API key environment variable names (optional)
 
-Use `-u` to specify a custom config file: `crabai -u ./my-config.toml summarize "some text"`
+Tip: Use `-u` to specify a custom config file: `crabai -u ./my-config.toml summarize "some text"`
 
 ### Config File Example
 
