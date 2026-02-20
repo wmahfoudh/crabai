@@ -282,6 +282,7 @@ dependencies = [
  "async-trait",
  "atty",
  "clap",
+ "console",
  "dialoguer",
  "dirs",
  "include_dir",

@@ -12,6 +12,8 @@ use std::io::Read;
 use std::process;
 
 use clap::Parser;
+use console::style;
+use dialoguer::{theme::ColorfulTheme, Confirm};
 
 use bundled_prompts::BundledPrompts;
 use cli::Cli;
@@ -25,7 +27,7 @@ async fn main() {
     let cli = Cli::parse();
 
     if let Err(e) = run(cli).await {
-        eprintln!("Error: {e}");
+        eprintln!("{} {e}", style("Error:").red().bold());
         process::exit(1);
     }
 }
@@ -75,13 +77,14 @@ async fn run(cli: Cli) -> Result<(), CrabError> {
             }
         }
         None => {
-            eprintln!("No model configured.");
-            eprintln!("Would you like to create a configuration file now? (y/n)");
+            let theme = ColorfulTheme::default();
+            eprintln!("{}", style("No model configured.").yellow().bold());
+            let proceed = Confirm::with_theme(&theme)
+                .with_prompt("Would you like to create a configuration file now?")
+                .default(true)
+                .interact()?;
 
-            let mut response = String::new();
-            std::io::stdin().read_line(&mut response)?;
-
-            if response.trim().to_lowercase().starts_with('y') {
+            if proceed {
                 config_editor::run_interactive_config(cli.use_config.as_deref()).await?;
                 return Ok(());
             } else {
@@ -173,12 +176,25 @@ async fn run(cli: Cli) -> Result<(), CrabError> {
     }
 
     if cli.verbose {
-        eprintln!("Provider: {}", provider.name());
-        eprintln!("Model: {model_name}");
-        eprintln!("Temperature (requested): {temperature}");
-        eprintln!("Temperature (final): {:?}", final_temperature);
-        eprintln!("Max tokens (requested): {max_tokens}");
-        eprintln!("Max tokens (final): {final_max_tokens}");
+        eprintln!("{}", style("Request Metadata:").yellow().bold());
+        eprintln!("  {} {}", style("Provider:").cyan(), provider.name());
+        eprintln!("  {} {}", style("Model:").cyan(), model_name);
+        eprintln!(
+            "  {} {}",
+            style("Temperature:").cyan(),
+            temperature
+        );
+        eprintln!(
+            "  {} {}",
+            style("Max tokens:").cyan(),
+            max_tokens
+        );
+        if let Some(info) = &model_info {
+            if let Some(limit) = info.max_output_tokens {
+                eprintln!("  {} {}", style("Model limit:").cyan(), limit);
+            }
+        }
+        eprintln!();
     }
 
     let response_result = provider
@@ -273,7 +289,7 @@ async fn list_models(cli: &Cli, config: &Config) -> Result<(), CrabError> {
             }
             Err(e) => {
                 if cli.verbose {
-                    eprintln!("Warning: {name}: {e}");
+                    eprintln!("{} {name}: {e}", style("Warning:").yellow().bold());
                 }
             }
         }
@@ -291,7 +307,8 @@ async fn list_models(cli: &Cli, config: &Config) -> Result<(), CrabError> {
 
     all_models.sort();
 
-    let selection = dialoguer::FuzzySelect::new()
+    let theme = ColorfulTheme::default();
+    let selection = dialoguer::FuzzySelect::with_theme(&theme)
         .with_prompt("Select a model to copy to clipboard")
         .items(&all_models)
         .default(0)
@@ -301,7 +318,11 @@ async fn list_models(cli: &Cli, config: &Config) -> Result<(), CrabError> {
         let selected_model: &String = &all_models[index];
         let mut cb = arboard::Clipboard::new()?;
         cb.set_text(selected_model.to_string())?;
-        eprintln!("Copied '{selected_model}' to clipboard.");
+        eprintln!(
+            "{} {}",
+            style("✓").green().bold(),
+            style(format!("Copied '{selected_model}' to clipboard.")).bold()
+        );
     }
 
     Ok(())

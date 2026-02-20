@@ -1,4 +1,5 @@
 use dialoguer::{theme::ColorfulTheme, Confirm, Input, Select};
+use console::style;
 use std::path::PathBuf;
 
 use crate::config::Config;
@@ -24,14 +25,22 @@ pub async fn run_interactive_config(config_path: Option<&str>) -> Result<(), Cra
         None => Config::default_config_path(),
     };
 
-    println!("CrabAI Interactive Configuration");
-    println!("=================================\n");
+    println!("{}", style("CrabAI Interactive Configuration").yellow().bold());
+    println!("{}\n", style("=================================").yellow());
 
     let mut config = if path.exists() {
-        println!("Loading existing config from: {}", path.display());
+        println!(
+            "{} {}",
+            style("Loading existing config from:").cyan(),
+            path.display()
+        );
         Config::load(Some(path.to_str().unwrap()))?
     } else {
-        println!("Creating new config at: {}", path.display());
+        println!(
+            "{} {}",
+            style("Creating new config at:").cyan(),
+            path.display()
+        );
         Config::default()
     };
 
@@ -56,7 +65,11 @@ pub async fn run_interactive_config(config_path: Option<&str>) -> Result<(), Cra
         let selected_provider = provider_names[provider_idx];
         config.default_provider = Some(selected_provider.to_string());
 
-        println!("\nFetching models for {}...", selected_provider);
+        println!(
+            "\n{} {}...",
+            style("Fetching models for").cyan(),
+            style(selected_provider).bold()
+        );
         let provider = get_provider_with_config(selected_provider, &config)?;
         let models_info = match provider.list_models().await {
             Ok(models) => models,
@@ -233,9 +246,13 @@ pub async fn run_interactive_config(config_path: Option<&str>) -> Result<(), Cra
     config.advanced = Some(advanced);
 
     // Save configuration
-    println!("\nSaving configuration to: {}", path.display());
+    println!(
+        "\n{} {}",
+        style("Saving configuration to:").cyan(),
+        path.display()
+    );
     config.save(&path)?;
-    println!("✓ Configuration saved successfully!");
+    println!("{}", style("✓ Configuration saved successfully!").green().bold());
 
     Ok(())
 }

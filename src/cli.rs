@@ -1,4 +1,20 @@
-use clap::Parser;
+use clap::{builder::Styles, Parser};
+
+fn styles() -> Styles {
+    Styles::styled()
+        .header(
+            clap::builder::styling::AnsiColor::Yellow
+                .on_default()
+                .bold(),
+        )
+        .usage(
+            clap::builder::styling::AnsiColor::Yellow
+                .on_default()
+                .bold(),
+        )
+        .literal(clap::builder::styling::AnsiColor::Green.on_default().bold())
+        .placeholder(clap::builder::styling::AnsiColor::Cyan.on_default())
+}
 
 /// Command-line interface definition for CrabAI.
 /// Parsed by clap from command-line arguments.
@@ -6,7 +22,8 @@ use clap::Parser;
 #[command(
     name = "crabai",
     version,
-    about = "Minimal Unix-native multi-provider LLM CLI"
+    about = "Minimal Unix-native multi-provider LLM CLI",
+    styles = styles()
 )]
 pub struct Cli {
     /// All remaining arguments after the options.
@@ -14,28 +31,23 @@ pub struct Cli {
     /// The rest are parts of the prompt.
     pub args: Vec<String>,
 
-    /// Model to use for the request, in provider:model format (e.g., "anthropic:claude-3-opus").
-    /// Overrides the default_model from config.
+    /// Model to use (e.g. 'anthropic:claude-3-opus'). Overrides config.
     #[arg(short = 'm', long = "model")]
     pub model: Option<String>,
 
     /// Sampling temperature (0.0 to 2.0).
-    /// Defaults to 0.2 unless overridden in config.
     #[arg(short = 't', long = "temperature")]
     pub temperature: Option<f32>,
 
-    /// Maximum tokens in the model's response.
-    /// Can be a number or "max" to use the model's limit.
+    /// Maximum tokens in the model's response (or "max").
     #[arg(short = 'T', long = "max-tokens")]
     pub max_tokens: Option<String>,
 
     /// Path to a custom config file.
-    /// If not specified, uses ~/.config/crabai/config.toml.
     #[arg(short = 'u', long = "use-config")]
     pub use_config: Option<String>,
 
-    /// Launch interactive config creation/editing wizard.
-    /// Guides the user through creating or updating the config file.
+    /// Launch interactive configuration wizard.
     #[arg(short = 'c', long = "config")]
     pub config: bool,
 
@@ -43,13 +55,11 @@ pub struct Cli {
     #[arg(short = 'L', long = "list-prompts")]
     pub list_prompts: bool,
 
-    /// List available models for all providers and exit.
-    /// The user can select a model to copy to the clipboard.
+    /// List models and copy selection to clipboard.
     #[arg(short = 'l', long = "list-models")]
     pub list_models: bool,
 
-    /// Print request metadata to STDERR before sending.
-    /// Shows provider, model, temperature, and max_tokens.
+    /// Print request metadata to STDERR.
     #[arg(short = 'v', long = "verbose")]
     pub verbose: bool,
 }
