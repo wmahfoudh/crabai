@@ -202,8 +202,8 @@ cat file.txt | crabai summarize -v
 # Translation using the translate prompt
 cat chapter-one.md | crabai translate "fr" > chapitre-un.md
 
-# Creating a blog post from a reddit discussion, using clean, blog and markdown prompts
-cat reddit-json-discussion.json | crabai clean | crabai blog | crabai markdown > my-blog-post.md
+# Creating a blog post from a social media copied text
+cat social media-post.txt | crabai clean | crabai blog | crabai markdown > my-blog-post.md
 
 # Generating quotes about a given topic, using the dixit prompt
 crabai dixit "absurdity"
