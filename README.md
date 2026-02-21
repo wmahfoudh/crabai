@@ -31,7 +31,7 @@ CrabAI is terminal tool for quick, composable AI tasks or for running structured
 - **Markdown Prompts**: Template system with reusable sample prompts just like [Fabric](https://github.com/danielmiessler/fabric).
 - **Universal Argument & Pipeline Support**: Construct prompts from arguments, files, and piped `STDIN`.
 - **Interactive Configuration**: Step-by-step setup wizard with auto-configuration on first run.
-- **Sample prompts**: Explore the `./src/prompts/` folder for a set of useful to start exploration. Read the prompts to understand how they work.
+- **Sample prompts**: Explore the `./src/prompts/` folder for a set of useful prompts to start exploration. Read the prompts to understand how they work.
 
 ## Supported Providers
 
@@ -148,41 +148,6 @@ This provides a powerful and flexible way to compose prompts.
 | `--help` | `-h` | Print help |
 | `--version` | `-V` | Print version |
 
-### Examples
-
-```bash
-# 1. Use a prompt file and pipe content to it
-
-# (Assumes 'summarize.md' exists in your prompts directory)
-cat report.txt | crabai summarize -m openai:gpt-4o
-
-# 2. Send a direct, one-line prompt
-crabai "Translate 'hello world' to French"
-
-# 3. Build a multi-part prompt from arguments
-crabai "Analyze this code for bugs:" "$(cat code.py)" "Focus on security issues."
-
-# 4. List models, find one, and use it
-crabai --list-models  # Interactively search and copy 'groq:gemma2-9b-it'
-cat story.txt | crabai -m groq:gemma2-9b-it "Summarize this story in one sentence."
-
-# 5. Verbose mode (prints metadata to STDERR)
-cat file.txt | crabai summarize -v
-
-# 6. Using template prompts (the examples here are from the provided sample prompts)
-
-# Translation using the translate prompt
-cat chapter-one.md | crabai translate "fr" > chapitre-un.md
-
-# Multi piping from unstructured input to a final blog post, using clean, blog and markdown prompts
-cat reddit-json-discussion.json | crabai clean | crabai blog | crabai markdown > my-blog-post.md
-
-# Generating quotes about a given topic, using the dixit prompt
-crabai dixit "absurdity"
-
-# Explore ideas with the weaver prompt
-cat article.md | crabai weaver > article-ideas.md
-```
 
 ## Prompts
 
@@ -209,6 +174,43 @@ CrabAI fetches model lists and capabilities (token limits, parameter support) dy
 2. Resolve provider & model from `-m` flag or config → Assemble prompt from args and STDIN
 3. Send to LLM → Print response to STDOUT
 4. Errors go to STDERR with exit code 1
+
+### Examples
+
+```bash
+# 1. Use a prompt file and pipe content to it
+
+# (Assumes 'summarize.md' exists in your prompts directory)
+# Uses a specific provider:model
+cat report.txt | crabai summarize -m openai:gpt-4o
+
+# 2. Send a direct, one-line prompt
+crabai "Translate 'hello world' to French"
+
+# 3. Build a multi-part prompt from arguments
+crabai "Analyze this code for bugs:" "$(cat code.py)" "Focus on security issues."
+
+# 4. List models, find one, and use it
+crabai --list-models  # Interactively search and copy 'groq:gemma2-9b-it'
+cat story.txt | crabai -m groq:gemma2-9b-it "Summarize this story in one sentence."
+
+# 5. Verbose mode (prints metadata to STDERR)
+cat file.txt | crabai summarize -v
+
+# 6. Using template prompts (the examples here are from the provided sample prompts)
+
+# Translation using the translate prompt
+cat chapter-one.md | crabai translate "fr" > chapitre-un.md
+
+# Creating a blog post from a reddit discussion, using clean, blog and markdown prompts
+cat reddit-json-discussion.json | crabai clean | crabai blog | crabai markdown > my-blog-post.md
+
+# Generating quotes about a given topic, using the dixit prompt
+crabai dixit "absurdity"
+
+# Explore ideas with the weaver prompt
+cat article.md | crabai weaver > article-ideas.md
+```
 
 ## Extending
 
