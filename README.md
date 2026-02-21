@@ -31,6 +31,7 @@ CrabAI is terminal tool for quick, composable AI tasks or for running structured
 - **Markdown Prompts**: Template system with reusable sample prompts just like [Fabric](https://github.com/danielmiessler/fabric).
 - **Universal Argument & Pipeline Support**: Construct prompts from arguments, files, and piped `STDIN`.
 - **Interactive Configuration**: Step-by-step setup wizard with auto-configuration on first run.
+- **Sample prompts**: Explore the `./src/prompts/` folder for a set of useful to start exploration. Read the prompts to understand how they work.
 
 ## Supported Providers
 
@@ -151,6 +152,7 @@ This provides a powerful and flexible way to compose prompts.
 
 ```bash
 # 1. Use a prompt file and pipe content to it
+
 # (Assumes 'summarize.md' exists in your prompts directory)
 cat report.txt | crabai summarize -m openai:gpt-4o
 
@@ -166,6 +168,20 @@ cat story.txt | crabai -m groq:gemma2-9b-it "Summarize this story in one sentenc
 
 # 5. Verbose mode (prints metadata to STDERR)
 cat file.txt | crabai summarize -v
+
+# 6. Using template prompts (the examples here are from the provided sample prompts)
+
+# Translation using the translate prompt
+cat chapter-one.md | crabai translate "fr" > chapitre-un.md
+
+# Multi piping from unstructured input to a final blog post, using clean, blog and markdown prompts
+cat reddit-json-discussion.json | crabai clean | crabai blog | crabai markdown > my-blog-post.md
+
+# Generating quotes about a given topic, using the dixit prompt
+crabai dixit "absurdity"
+
+# Explore ideas with the weaver prompt
+cat article.md | crabai weaver > article-ideas.md
 ```
 
 ## Prompts
@@ -175,8 +191,8 @@ Prompts are Markdown files in `~/.config/crabai/prompts/`. Sample prompts are in
 **Format:** Plain `.md` files. Filename (without extension) becomes the prompt name.
 
 ```bash
-echo "Your prompt text" > ~/.config/crabai/prompts/summarize.md
-cat document.txt | crabai summarize
+echo "breakdown this into concise bulletpoints." > ~/.config/crabai/prompts/bullets.md
+cat document.txt | crabai bullets
 ```
 
 ## Model Capabilities & Discovery
@@ -198,7 +214,7 @@ CrabAI fetches model lists and capabilities (token limits, parameter support) dy
 
 **Add a provider:** Create `src/providers/<name>.rs`, implement the `Provider` trait, register in `src/providers/mod.rs` and `src/types.rs`. Use `openai_compat.rs` helpers for OpenAI-compatible APIs.
 
-**Add prompts:** Place `.md` files in `src/prompts/` and rebuild. They'll be embedded and auto-installed.
+**Add prompts:** Place prompt `.md` files in `~/.config/crabai/prompts/`, they will be directly usable, or in `src/prompts/` and rebuild. They'll be embedded and auto-installed.
 
 
 ## License
