@@ -175,7 +175,7 @@ CrabAI fetches model lists and capabilities (token limits, parameter support) dy
 3. Send to LLM → Print response to STDOUT
 4. Errors go to STDERR with exit code 1
 
-### Examples
+## Examples
 
 ```bash
 # 1. Use a prompt file and pipe content to it
